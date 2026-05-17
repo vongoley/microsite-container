@@ -118,7 +118,7 @@ async def view_page(page_id: str, db: sqlite3.Connection = Depends(get_db)):
 
 @app.get("/admin/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
 @app.post("/admin/login")
@@ -135,7 +135,7 @@ async def login(
         resp = RedirectResponse(url="/admin", status_code=303)
         resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=SESSION_TTL_HOURS * 3600)
         return resp
-    return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"}, status_code=401)
+    return templates.TemplateResponse(request, "login.html", {"error": "Invalid credentials"}, status_code=401)
 
 
 @app.get("/admin/logout")
@@ -151,7 +151,7 @@ async def logout():
 async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db), _: bool = Depends(require_admin)):
     rows = db.execute("SELECT * FROM pages ORDER BY uploaded_at DESC").fetchall()
     pages = [dict(r) for r in rows]
-    return templates.TemplateResponse("admin.html", {"request": request, "pages": pages})
+    return templates.TemplateResponse(request, "admin.html", {"pages": pages})
 
 
 @app.post("/admin/upload")
