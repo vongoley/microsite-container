@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/app/data
+    environment:
+      - ADMIN_USERNAME=admin
+      # Generate with: python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - SESSION_SECRET=${SESSION_SECRET}
