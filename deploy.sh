@@ -73,7 +73,7 @@ docker compose --env-file .env up -d --build
 echo "  等待服务启动 ..."
 sleep 3
 
-if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/admin/login | grep -q "200"; then
+if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/admin/login | grep -q "200"; then
     echo "  服务启动成功 ✓"
 else
     echo "  警告: 服务可能未完全启动，请稍后检查 docker compose logs"
@@ -91,7 +91,7 @@ server {
     client_max_body_size 20M;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
