@@ -189,11 +189,17 @@
 
     function copyLink(btn, path) {
       const url = location.origin + path;
-      navigator.clipboard.writeText(url).then(() => {
-        btn.textContent = "已复制";
-        btn.classList.add("copied");
-        setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
-      });
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      btn.textContent = "已复制";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
     }
   </script>
 </body>

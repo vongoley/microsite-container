@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -23,6 +23,7 @@ ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_HOURS = 24
+TZ_BEIJING = timezone(timedelta(hours=8))
 
 
 def hash_password(password: str) -> str:
@@ -30,7 +31,7 @@ def hash_password(password: str) -> str:
 
 
 def make_session_token(username: str) -> str:
-    payload = f"{username}:{datetime.utcnow().isoformat()}"
+    payload = f"{username}:{datetime.now(TZ_BEIJING).isoformat()}"
     sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}:{sig}"
 
@@ -46,7 +47,7 @@ def verify_session_token(token: str) -> bool:
             return False
         _, ts = payload.split(":", 1)
         created = datetime.fromisoformat(ts)
-        if datetime.utcnow() - created > timedelta(hours=SESSION_TTL_HOURS):
+        if datetime.now(TZ_BEIJING) - created > timedelta(hours=SESSION_TTL_HOURS):
             return False
         return True
     except Exception:
@@ -180,7 +181,7 @@ async def upload_html(
 
     db.execute(
         "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path) VALUES (?, ?, ?, ?, ?)",
-        (page_id, title, file.filename, datetime.utcnow().isoformat(), str(file_path)),
+        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path)),
     )
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
