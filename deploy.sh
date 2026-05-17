@@ -52,7 +52,7 @@ else
         echo "  密码不一致，请重新输入"
     done
 
-    PASS_HASH=$(python3 -c "import hashlib; print(hashlib.sha256(b'${ADMIN_PASS}'.encode() if isinstance(b'${ADMIN_PASS}', bytes) else '${ADMIN_PASS}'.encode()).hexdigest())" 2>/dev/null || python3 -c "import hashlib; print(hashlib.sha256('${ADMIN_PASS}'.encode()).hexdigest())")
+    PASS_HASH=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" "$ADMIN_PASS")
     SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 
     cat > .env <<ENVEOF
