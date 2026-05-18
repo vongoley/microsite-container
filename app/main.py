@@ -181,6 +181,7 @@ async def upload_html(
     request: Request,
     title: str = Form(...),
     file: UploadFile = File(...),
+    slug: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),
     _: bool = Depends(require_admin),
 ):
@@ -188,11 +189,30 @@ async def upload_html(
         raise HTTPException(status_code=400, detail="Only .html files allowed")
 
     content = await file.read()
-    if len(content) > 10 * 1024 * 1024:  # 10 MB limit
+    if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
 
+    slug = slug.strip() or None
+    if slug and not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_./-]*$", slug):
+        raise HTTPException(status_code=400, detail="Slug 格式无效，仅允许字母、数字、连字符、点、斜杠")
+
+    if slug:
+        existing = db.execute("SELECT id, file_path FROM pages WHERE slug = ?", (slug,)).fetchone()
+        if existing:
+            old_fp = Path(existing["file_path"])
+            if old_fp.exists():
+                old_fp.unlink()
+            safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename)
+            file_path = UPLOADS_DIR / f"{existing['id']}_{safe_name}"
+            file_path.write_bytes(content)
+            db.execute(
+                "UPDATE pages SET title=?, original_filename=?, uploaded_at=?, file_path=? WHERE slug=?",
+                (title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug),
+            )
+            db.commit()
+            return RedirectResponse(url="/admin", status_code=303)
+
     page_id = str(uuid.uuid4())[:8]
-    # ensure uniqueness
     while db.execute("SELECT 1 FROM pages WHERE id = ?", (page_id,)).fetchone():
         page_id = str(uuid.uuid4())[:8]
 
@@ -201,8 +221,8 @@ async def upload_html(
     file_path.write_bytes(content)
 
     db.execute(
-        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path) VALUES (?, ?, ?, ?, ?)",
-        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path)),
+        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug) VALUES (?, ?, ?, ?, ?, ?)",
+        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug),
     )
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)

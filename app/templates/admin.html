@@ -26,7 +26,7 @@
     header h1 { font-size: 1.1rem; font-weight: 600; color: #4f46e5; }
     header a { font-size: .875rem; color: #6b7280; text-decoration: none; }
     header a:hover { color: #111; }
-    main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    main { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
 
     /* Upload card */
     .upload-card {
@@ -54,7 +54,6 @@
     }
     .upload-row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
     .upload-row input[type=text] {
-      flex: 1 1 200px;
       padding: .5rem .75rem;
       border: 1px solid #d1d5db;
       border-radius: 6px;
@@ -62,6 +61,8 @@
       outline: none;
     }
     .upload-row input[type=text]:focus { border-color: #4f46e5; }
+    .upload-row .field-title { flex: 1 1 200px; }
+    .upload-row .field-slug { flex: 0 1 220px; }
     .file-label {
       display: inline-block;
       padding: .5rem .875rem;
@@ -137,7 +138,8 @@
     }
     .delete-form button:hover { background: #fef2f2; }
     .empty { text-align: center; color: #9ca3af; padding: 3rem 1rem; font-size: .9rem; }
-    .ts { color: #9ca3af; font-size: .8rem; }
+    .ts { color: #9ca3af; font-size: .8rem; white-space: nowrap; }
+    .slug-empty { color: #d1d5db; font-size: .8rem; }
   </style>
 </head>
 <body>
@@ -151,7 +153,8 @@
       <form id="upload-form" method="post" action="/admin/upload" enctype="multipart/form-data">
         <div id="drop-zone" class="drop-zone">将 .html 文件拖拽到此处，或点击下方选择文件</div>
         <div class="upload-row">
-          <input type="text" name="title" placeholder="标题（用于列表展示）" required>
+          <input type="text" name="title" class="field-title" placeholder="标题（用于列表展示）" required>
+          <input type="text" name="slug" class="field-slug" placeholder="slug（可选，如 project/name）">
           <label class="file-label" for="file-input">选择文件</label>
           <input id="file-input" type="file" name="file" accept=".html" required>
           <span id="file-name">未选择文件</span>
@@ -165,8 +168,8 @@
       <thead>
         <tr>
           <th>标题</th>
-          <th>ID</th>
-          <th>分享链接</th>
+          <th>ID 链接</th>
+          <th>Slug 链接</th>
           <th>上传时间</th>
           <th>操作</th>
         </tr>
@@ -175,17 +178,20 @@
         {% for p in pages %}
         <tr>
           <td>{{ p.title }}</td>
-          <td><span class="badge">{{ p.id }}</span></td>
           <td>
             <div class="link-cell">
-              <a href="/view/{{ p.id }}" target="_blank" style="font-size:.85rem;color:#4f46e5;word-break:break-all;">/view/{{ p.id }}</a>
+              <a href="/view/{{ p.id }}" target="_blank" style="font-size:.85rem;color:#4f46e5;">/view/{{ p.id }}</a>
               <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.id }}')">复制</button>
             </div>
+          </td>
+          <td>
             {% if p.slug %}
-            <div class="link-cell" style="margin-top:.35rem;">
+            <div class="link-cell">
               <a href="/view/{{ p.slug }}" target="_blank" style="font-size:.85rem;color:#6d28d9;word-break:break-all;">/view/{{ p.slug }}</a>
               <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.slug }}')">复制</button>
             </div>
+            {% else %}
+            <span class="slug-empty">—</span>
             {% endif %}
           </td>
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
