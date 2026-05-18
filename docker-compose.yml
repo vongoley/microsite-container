@@ -11,3 +11,4 @@ services:
       # Generate with: python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
       - SESSION_SECRET=${SESSION_SECRET}
+      - API_KEY=${API_KEY}
