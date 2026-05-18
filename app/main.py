@@ -193,8 +193,8 @@ async def upload_html(
         raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
 
     slug = slug.strip() or None
-    if slug and not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_./-]*$", slug):
-        raise HTTPException(status_code=400, detail="Slug 格式无效，仅允许字母、数字、连字符、点、斜杠")
+    if slug and not re.match(r"^[\w][\w./-]*$", slug, re.UNICODE):
+        raise HTTPException(status_code=400, detail="Slug 格式无效")
 
     if slug:
         existing = db.execute("SELECT id, file_path FROM pages WHERE slug = ?", (slug,)).fetchone()
@@ -211,6 +211,15 @@ async def upload_html(
             )
             db.commit()
             return RedirectResponse(url="/admin", status_code=303)
+    else:
+        base_slug = re.sub(r"[^\w]+", "-", title, flags=re.UNICODE).strip("-")
+        if not base_slug:
+            base_slug = "page-" + str(uuid.uuid4())[:6]
+        slug = base_slug
+        suffix = 2
+        while db.execute("SELECT 1 FROM pages WHERE slug = ?", (slug,)).fetchone():
+            slug = f"{base_slug}-{suffix}"
+            suffix += 1
 
     page_id = str(uuid.uuid4())[:8]
     while db.execute("SELECT 1 FROM pages WHERE id = ?", (page_id,)).fetchone():
@@ -255,7 +264,7 @@ async def api_upsert_page(
     db: sqlite3.Connection = Depends(get_db),
     _: bool = Depends(require_api_key),
 ):
-    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_./-]*$", slug):
+    if not re.match(r"^[\w][\w./-]*$", slug, re.UNICODE):
         raise HTTPException(status_code=400, detail="Invalid slug: use letters, numbers, hyphens, dots, slashes")
 
     content = await file.read()
