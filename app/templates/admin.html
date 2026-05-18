@@ -37,6 +37,21 @@
       margin-bottom: 2rem;
     }
     .upload-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    .drop-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 2rem 1rem;
+      text-align: center;
+      color: #9ca3af;
+      font-size: .9rem;
+      margin-bottom: 1rem;
+      transition: border-color .15s, background .15s;
+    }
+    .drop-zone.dragover {
+      border-color: #4f46e5;
+      background: #eef2ff;
+      color: #4f46e5;
+    }
     .upload-row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
     .upload-row input[type=text] {
       flex: 1 1 200px;
@@ -133,7 +148,8 @@
   <main>
     <div class="upload-card">
       <h2>上传 HTML</h2>
-      <form method="post" action="/admin/upload" enctype="multipart/form-data">
+      <form id="upload-form" method="post" action="/admin/upload" enctype="multipart/form-data">
+        <div id="drop-zone" class="drop-zone">将 .html 文件拖拽到此处，或点击下方选择文件</div>
         <div class="upload-row">
           <input type="text" name="title" placeholder="标题（用于列表展示）" required>
           <label class="file-label" for="file-input">选择文件</label>
@@ -183,6 +199,27 @@
   </main>
 
   <script>
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+
+    ["dragenter", "dragover"].forEach(evt => {
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    });
+    ["dragleave", "drop"].forEach(evt => {
+      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove("dragover"); });
+    });
+    dropZone.addEventListener("drop", e => {
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith(".html")) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        document.getElementById("file-name").textContent = file.name;
+      } else {
+        alert("仅支持 .html 文件");
+      }
+    });
+
     document.getElementById("file-input").addEventListener("change", function() {
       document.getElementById("file-name").textContent = this.files[0]?.name || "未选择文件";
     });

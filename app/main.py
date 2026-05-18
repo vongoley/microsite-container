@@ -31,7 +31,8 @@ def hash_password(password: str) -> str:
 
 
 def make_session_token(username: str) -> str:
-    payload = f"{username}:{datetime.now(TZ_BEIJING).isoformat()}"
+    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    payload = f"{username}:{ts}"
     sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return f"{payload}:{sig}"
 
@@ -45,9 +46,10 @@ def verify_session_token(token: str) -> bool:
         expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected):
             return False
-        _, ts = payload.split(":", 1)
-        created = datetime.fromisoformat(ts)
-        if datetime.now(TZ_BEIJING) - created > timedelta(hours=SESSION_TTL_HOURS):
+        _, ts_str = payload.split(":", 1)
+        created = int(ts_str)
+        now = int(datetime.now(TZ_BEIJING).timestamp())
+        if now - created > SESSION_TTL_HOURS * 3600:
             return False
         return True
     except Exception:
