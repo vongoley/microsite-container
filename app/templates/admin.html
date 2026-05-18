@@ -178,8 +178,13 @@
           <td><span class="badge">{{ p.id }}</span></td>
           <td>
             <div class="link-cell">
+              {% if p.slug %}
+              <a href="/view/{{ p.slug }}" target="_blank" style="font-size:.85rem;color:#4f46e5;word-break:break-all;">/view/{{ p.slug }}</a>
+              <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.slug }}')">复制</button>
+              {% else %}
               <a href="/view/{{ p.id }}" target="_blank" style="font-size:.85rem;color:#4f46e5;word-break:break-all;">/view/{{ p.id }}</a>
               <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.id }}')">复制</button>
+              {% endif %}
             </div>
           </td>
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
