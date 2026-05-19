@@ -89,7 +89,7 @@
     }
     .btn-upload:hover { background: #4338ca; }
 
-    /* Table */
+    /* Table (desktop) */
     table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
     th {
       text-align: left;
@@ -140,6 +140,47 @@
     .empty { text-align: center; color: #9ca3af; padding: 3rem 1rem; font-size: .9rem; }
     .ts { color: #9ca3af; font-size: .8rem; white-space: nowrap; }
     .slug-empty { color: #d1d5db; font-size: .8rem; }
+
+    /* Mobile card list */
+    .card-list { display: none; }
+    .page-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+    }
+    .page-card-title {
+      font-weight: 600;
+      font-size: .95rem;
+      margin-bottom: .5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .page-card-links { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
+    .page-card-links .link-cell a { font-size: .8rem; word-break: break-all; }
+    .page-card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      main { padding: 0 .5rem; margin: 1rem auto; }
+      .upload-card { padding: 1rem; }
+      .drop-zone { padding: 1.5rem .75rem; font-size: .85rem; }
+      .upload-row { flex-direction: column; align-items: stretch; }
+      .upload-row .field-title,
+      .upload-row .field-slug { flex: 1 1 auto; }
+      .upload-row input[type=text] { width: 100%; }
+      .file-row { display: flex; gap: .5rem; align-items: center; }
+      .btn-upload { width: 100%; padding: .75rem; }
+
+      table { display: none; }
+      .card-list { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -155,15 +196,18 @@
         <div class="upload-row">
           <input type="text" name="title" class="field-title" placeholder="标题（用于列表展示）" required>
           <input type="text" name="slug" class="field-slug" placeholder="slug（可选，如 project/name）">
-          <label class="file-label" for="file-input">选择文件</label>
-          <input id="file-input" type="file" name="file" accept=".html" required>
-          <span id="file-name">未选择文件</span>
+          <div class="file-row">
+            <label class="file-label" for="file-input">选择文件</label>
+            <input id="file-input" type="file" name="file" accept=".html" required>
+            <span id="file-name">未选择文件</span>
+          </div>
           <button type="submit" class="btn-upload">上传</button>
         </div>
       </form>
     </div>
 
     {% if pages %}
+    <!-- Desktop: table -->
     <table>
       <thead>
         <tr>
@@ -205,6 +249,36 @@
         {% endfor %}
       </tbody>
     </table>
+
+    <!-- Mobile: card list -->
+    <div class="card-list">
+      {% for p in pages %}
+      <div class="page-card">
+        <div class="page-card-title">
+          <span>{{ p.title }}</span>
+          <form class="delete-form" method="post" action="/admin/delete/{{ p.id }}"
+                onsubmit="return confirm('确认删除「{{ p.title }}」？')" style="margin:0;">
+            <button type="submit">删除</button>
+          </form>
+        </div>
+        <div class="page-card-links">
+          <div class="link-cell">
+            <a href="/view/{{ p.id }}" target="_blank" style="color:#4f46e5;">/view/{{ p.id }}</a>
+            <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.id }}')">复制</button>
+          </div>
+          {% if p.slug %}
+          <div class="link-cell">
+            <a href="/view/{{ p.slug }}" target="_blank" style="color:#6d28d9;">/view/{{ p.slug }}</a>
+            <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.slug }}')">复制</button>
+          </div>
+          {% endif %}
+        </div>
+        <div class="page-card-meta">
+          <span class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
     {% else %}
     <div class="empty">暂无已上传的 HTML，请先上传。</div>
     {% endif %}
