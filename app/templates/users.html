@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户管理 — HTML Container</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f9fafb;
+      color: #111;
+      min-height: 100vh;
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: .875rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; color: #4f46e5; }
+    header nav { display: flex; align-items: center; gap: 1rem; }
+    header a { font-size: .875rem; color: #6b7280; text-decoration: none; }
+    header a:hover { color: #111; }
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+
+    .section { margin-bottom: 2rem; }
+    .section h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    th {
+      text-align: left;
+      font-size: .8rem;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      padding: .75rem 1rem;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    td { padding: .75rem 1rem; font-size: .9rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+
+    .badge {
+      display: inline-block;
+      font-size: .75rem;
+      padding: .15rem .5rem;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .badge-super { background: #fef3c7; color: #92400e; }
+    .badge-admin { background: #dbeafe; color: #1e40af; }
+    .badge-active { background: #d1fae5; color: #065f46; }
+    .badge-inactive { background: #fee2e2; color: #991b1b; }
+    .badge-unused { background: #e0e7ff; color: #3730a3; }
+    .badge-used { background: #f3f4f6; color: #6b7280; }
+
+    .btn {
+      padding: .3rem .7rem;
+      font-size: .8rem;
+      border-radius: 4px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover { background: #f3f4f6; }
+    .btn-danger { border-color: #fca5a5; color: #dc2626; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-primary {
+      background: #4f46e5;
+      color: #fff;
+      border-color: #4f46e5;
+      padding: .5rem 1.25rem;
+      font-size: .9rem;
+    }
+    .btn-primary:hover { background: #4338ca; }
+
+    .invite-form { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .invite-form select {
+      padding: .4rem .75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: .9rem;
+    }
+
+    .invite-link {
+      font-family: monospace;
+      font-size: .8rem;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: .25rem .5rem;
+      word-break: break-all;
+    }
+
+    .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+    @media (max-width: 768px) {
+      main { padding: 0 .5rem; margin: 1rem auto; }
+      .card { padding: 1rem; }
+      table { font-size: .85rem; }
+      th, td { padding: .5rem .6rem; }
+      .invite-form { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>用户管理</h1>
+    <nav>
+      <a href="/admin">← 返回管理</a>
+      <a href="/admin/logout">退出登录</a>
+    </nav>
+  </header>
+  <main>
+    <!-- Invite section -->
+    <div class="section">
+      <h2>创建邀请</h2>
+      <div class="card">
+        <form class="invite-form" method="post" action="/admin/users/invite">
+          <label style="font-size:.9rem;">角色：</label>
+          <select name="role">
+            <option value="admin">普通管理员</option>
+            <option value="super_admin">超级管理员</option>
+          </select>
+          <button type="submit" class="btn btn-primary">生成邀请链接</button>
+        </form>
+      </div>
+
+      {% if invitations %}
+      <table>
+        <thead>
+          <tr>
+            <th>邀请链接</th>
+            <th>角色</th>
+            <th>状态</th>
+            <th>创建时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invitations %}
+          <tr>
+            <td>
+              {% if not inv.used_at %}
+              <span class="invite-link">/admin/register/{{ inv.code }}</span>
+              {% else %}
+              <span style="color:#9ca3af;font-size:.8rem;">已使用（{{ inv.used_by }}）</span>
+              {% endif %}
+            </td>
+            <td><span class="badge {{ 'badge-super' if inv.role == 'super_admin' else 'badge-admin' }}">{{ '超管' if inv.role == 'super_admin' else '管理员' }}</span></td>
+            <td><span class="badge {{ 'badge-used' if inv.used_at else 'badge-unused' }}">{{ '已使用' if inv.used_at else '未使用' }}</span></td>
+            <td style="font-size:.8rem;color:#9ca3af;">{{ inv.created_at[:16].replace("T"," ") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+
+    <!-- Users list -->
+    <div class="section">
+      <h2>用户列表</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>用户名</th>
+            <th>角色</th>
+            <th>状态</th>
+            <th>注册时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.username }}</td>
+            <td><span class="badge {{ 'badge-super' if u.role == 'super_admin' else 'badge-admin' }}">{{ '超管' if u.role == 'super_admin' else '管理员' }}</span></td>
+            <td><span class="badge {{ 'badge-active' if u.is_active else 'badge-inactive' }}">{{ '正常' if u.is_active else '已禁用' }}</span></td>
+            <td style="font-size:.8rem;color:#9ca3af;">{{ u.created_at[:16].replace("T"," ") }}</td>
+            <td>
+              {% if u.id != user.id %}
+              <div class="actions">
+                <form method="post" action="/admin/users/{{ u.id }}/toggle" style="margin:0;">
+                  <button type="submit" class="btn {{ 'btn-danger' if u.is_active else '' }}">{{ '禁用' if u.is_active else '启用' }}</button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/role" style="margin:0;">
+                  <input type="hidden" name="role" value="{{ 'admin' if u.role == 'super_admin' else 'super_admin' }}">
+                  <button type="submit" class="btn">{{ '降为管理员' if u.role == 'super_admin' else '升为超管' }}</button>
+                </form>
+              </div>
+              {% else %}
+              <span style="font-size:.8rem;color:#9ca3af;">当前用户</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

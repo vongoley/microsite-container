@@ -187,7 +187,13 @@
 <body>
   <header>
     <h1>HTML Container</h1>
-    <a href="/admin/logout">退出登录</a>
+    <nav style="display:flex;align-items:center;gap:1rem;">
+      <span style="font-size:.8rem;color:#6b7280;">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
+      {% if user.role == 'super_admin' %}
+      <a href="/admin/users" style="font-size:.8rem;">用户管理</a>
+      {% endif %}
+      <a href="/admin/logout">退出登录</a>
+    </nav>
   </header>
   <main>
     <div class="upload-card">
@@ -215,6 +221,7 @@
           <th>标题</th>
           <th>ID 链接</th>
           <th>Slug 链接</th>
+          {% if user.role == 'super_admin' %}<th>所有者</th>{% endif %}
           <th>上传时间</th>
           <th>操作</th>
         </tr>
@@ -239,6 +246,7 @@
             <span class="slug-empty">—</span>
             {% endif %}
           </td>
+          {% if user.role == 'super_admin' %}<td style="font-size:.8rem;color:#6b7280;">{{ p.owner_name or '—' }}</td>{% endif %}
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
           <td>
             <form class="delete-form" method="post" action="/admin/delete/{{ p.id }}"
