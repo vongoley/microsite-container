@@ -156,7 +156,9 @@
           <tr>
             <td>
               {% if not inv.used_at %}
-              <span class="invite-link">/admin/register/{{ inv.code }}</span>
+              <span class="invite-link" id="invite-{{ inv.id }}"></span>
+              <button class="btn" style="margin-left:.5rem;font-size:.75rem;" onclick="copyInvite('invite-{{ inv.id }}')">复制</button>
+              <script>document.getElementById('invite-{{ inv.id }}').textContent = location.origin + '/admin/register/{{ inv.code }}';</script>
               {% else %}
               <span style="color:#9ca3af;font-size:.8rem;">已使用（{{ inv.used_by }}）</span>
               {% endif %}
@@ -212,5 +214,24 @@
       </table>
     </div>
   </main>
+  <script>
+    function copyInvite(id) {
+      const el = document.getElementById(id);
+      const ta = document.createElement("textarea");
+      ta.value = el.textContent;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      const btn = el.nextElementSibling;
+      btn.textContent = "已复制";
+      btn.style.background = "#d1fae5";
+      btn.style.borderColor = "#6ee7b7";
+      btn.style.color = "#065f46";
+      setTimeout(() => { btn.textContent = "复制"; btn.style.background = ""; btn.style.borderColor = ""; btn.style.color = ""; }, 1500);
+    }
+  </script>
 </body>
 </html>
