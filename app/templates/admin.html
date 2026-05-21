@@ -227,22 +227,6 @@
       </form>
     </div>
 
-    {% if user.role == 'super_admin' %}
-    <div class="upload-card" style="padding:1rem 1.5rem;">
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-        <span style="font-size:.9rem;font-weight:600;">邀请成员</span>
-        <form method="post" action="/admin/users/invite" style="display:flex;align-items:center;gap:.5rem;margin:0;">
-          <select name="role" style="padding:.3rem .5rem;border:1px solid #d1d5db;border-radius:4px;font-size:.85rem;">
-            <option value="admin">普通管理员</option>
-            <option value="super_admin">超级管理员</option>
-          </select>
-          <button type="submit" style="padding:.35rem .8rem;background:#4f46e5;color:#fff;border:none;border-radius:4px;font-size:.85rem;cursor:pointer;">生成邀请链接</button>
-        </form>
-        <a href="/admin/users" style="font-size:.8rem;color:#6b7280;">管理全部用户 →</a>
-      </div>
-    </div>
-    {% endif %}
-
     {% if pages %}
     <!-- Desktop: table -->
     <table>

@@ -351,6 +351,17 @@ async def create_invitation(
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
+@app.post("/admin/users/invite/{invite_id}/delete")
+async def delete_invitation(
+    invite_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(require_super_admin),
+):
+    db.execute("DELETE FROM invitations WHERE id = ? AND used_at IS NULL", (invite_id,))
+    db.commit()
+    return RedirectResponse(url="/admin/users", status_code=303)
+
+
 @app.post("/admin/users/{user_id}/toggle")
 async def toggle_user(
     user_id: str,

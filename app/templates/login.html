@@ -76,6 +76,18 @@
       </div>
       <button type="submit">登录</button>
     </form>
+    <p style="text-align:center;margin-top:1rem;font-size:.85rem;">
+      <a href="#" onclick="document.getElementById('invite-section').style.display='block';this.parentElement.style.display='none';" style="color:#4f46e5;text-decoration:none;">使用邀请码注册</a>
+    </p>
+    <div id="invite-section" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+      <form method="get" action="/admin/register/code" onsubmit="this.action='/admin/register/'+document.getElementById('invite-code').value;return true;">
+        <div class="field">
+          <label for="invite-code">邀请码</label>
+          <input id="invite-code" type="text" placeholder="粘贴邀请码" required>
+        </div>
+        <button type="submit" style="background:#059669;">前往注册</button>
+      </form>
+    </div>
   </div>
 </body>
 </html>
