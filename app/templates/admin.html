@@ -37,8 +37,9 @@
       margin-bottom: 2rem;
     }
     .upload-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
-    .upload-layout { display: flex; gap: 1.5rem; }
-    .upload-left { flex: 3; }
+    .upload-layout { display: flex; gap: 1.5rem; align-items: stretch; }
+    .upload-left { flex: 3; display: flex; }
+    .upload-left .drop-zone { flex: 1; }
     .upload-right { flex: 2; display: flex; flex-direction: column; gap: .75rem; }
     .drop-zone {
       border: 2px dashed #d1d5db;
