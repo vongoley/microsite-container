@@ -629,14 +629,51 @@ async def api_delete_page(
 SKILL_DIR = BASE_DIR / "skill"
 
 @app.get("/api/install-skill")
-async def install_skill(request: Request, token: str = ""):
+async def install_skill(request: Request, token: str = "", os: str = "unix"):
     if not token:
         raise HTTPException(status_code=400, detail="Missing token parameter")
     base_url = str(request.base_url).rstrip("/")
     skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     upload_py = (SKILL_DIR / "upload.py").read_text(encoding="utf-8")
 
-    script = f"""#!/usr/bin/env bash
+    if os == "win":
+        # PowerShell script for Windows
+        skill_md_escaped = skill_md.replace("'", "''")
+        upload_py_escaped = upload_py.replace("'", "''")
+        script = f"""$ErrorActionPreference = "Stop"
+
+$SkillDir = "$env:USERPROFILE\\.claude\\skills\\html-container"
+$ScriptsDir = "$SkillDir\\scripts"
+$ConfigDir = "$env:USERPROFILE\\.config\\html-container"
+
+Write-Host "Installing HTML Container skill..."
+
+New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+
+@'
+{skill_md_escaped}
+'@ | Set-Content -Path "$SkillDir\\SKILL.md" -Encoding UTF8
+
+@'
+{upload_py_escaped}
+'@ | Set-Content -Path "$ScriptsDir\\upload.py" -Encoding UTF8
+
+@"
+API_KEY={token}
+BASE_URL={base_url}
+"@ | Set-Content -Path "$ConfigDir\\credentials.env" -Encoding UTF8
+
+Write-Host ""
+Write-Host "Done! Skill installed successfully."
+Write-Host "   Skill: $SkillDir"
+Write-Host "   Config: $ConfigDir\\credentials.env"
+Write-Host "   Server: {base_url}"
+Write-Host ""
+Write-Host "Claude Code can now upload HTML/Markdown files from any workspace."
+"""
+    else:
+        script = f"""#!/usr/bin/env bash
 set -e
 
 SKILL_DIR="$HOME/.claude/skills/html-container"
@@ -664,12 +701,12 @@ CRED_EOF
 chmod +x "$SCRIPTS_DIR/upload.py"
 
 echo ""
-echo "✅ 安装完成！"
-echo "   Skill 路径: $SKILL_DIR"
-echo "   凭证路径: $CONFIG_DIR/credentials.env"
-echo "   服务地址: {base_url}"
+echo "Done! Skill installed successfully."
+echo "   Skill: $SKILL_DIR"
+echo "   Config: $CONFIG_DIR/credentials.env"
+echo "   Server: {base_url}"
 echo ""
-echo "现在可以在任何工作区使用 Claude Code 上传 HTML/Markdown 文件了。"
+echo "Claude Code can now upload HTML/Markdown files from any workspace."
 """
     return Response(content=script, media_type="text/plain")
 

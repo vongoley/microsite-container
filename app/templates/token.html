@@ -38,6 +38,9 @@
     .setup-guide pre { background: #1e293b; color: #e2e8f0; padding: .75rem 1rem; border-radius: 4px; font-size: .8rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
     .setup-guide .copy-cmd { margin-top: .5rem; }
 
+    .os-tab { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+    .os-tab.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+
     @media (max-width: 768px) {
       main { padding: 0 .5rem; margin: 1rem auto; }
       .card { padding: 1rem; }
@@ -90,7 +93,11 @@
     {% if tokens %}
     <div class="card">
       <h2>一键安装 Claude Code Skill</h2>
-      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，自动安装 skill 脚本并配置 Token（适用于你自己或团队成员的电脑）：</p>
+      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，自动安装 skill 脚本并配置 Token：</p>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
+        <button class="btn os-tab active" onclick="switchOS('unix')" id="tab-unix">macOS / Linux</button>
+        <button class="btn os-tab" onclick="switchOS('win')" id="tab-win">Windows (PowerShell)</button>
+      </div>
       <div class="setup-guide">
         <pre id="setup-cmd"></pre>
         <button class="btn copy-cmd" onclick="copySetup()">复制安装命令</button>
@@ -108,11 +115,27 @@
     {% endif %}
   </main>
   <script>
-    const setupCmd = document.getElementById('setup-cmd');
-    if (setupCmd) {
-      const installUrl = location.origin + '/api/install-skill?token={{ tokens[0].token if tokens else "" }}';
-      setupCmd.textContent = 'curl -fsSL "' + installUrl + '" | bash';
+    const token = '{{ tokens[0].token if tokens else "" }}';
+    let currentOS = 'unix';
+
+    function switchOS(os) {
+      currentOS = os;
+      document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + os).classList.add('active');
+      renderCmd();
     }
+
+    function renderCmd() {
+      const setupCmd = document.getElementById('setup-cmd');
+      if (!setupCmd || !token) return;
+      const installUrl = location.origin + '/api/install-skill?token=' + token + '&os=' + currentOS;
+      if (currentOS === 'win') {
+        setupCmd.textContent = 'irm "' + installUrl + '" | iex';
+      } else {
+        setupCmd.textContent = 'curl -fsSL "' + installUrl + '" | bash';
+      }
+    }
+    renderCmd();
 
     function copyText(btn, text) {
       const ta = document.createElement("textarea");
