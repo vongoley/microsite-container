@@ -199,19 +199,67 @@ MARKDOWN_TEMPLATE = """<!DOCTYPE html>
 <title>{title}</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
 <style>
-  body {{ max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; }}
+  .layout {{ display: flex; max-width: 1200px; margin: 0 auto; min-height: 100vh; }}
+  .toc {{
+    position: sticky; top: 0; align-self: flex-start;
+    width: 240px; flex-shrink: 0; padding: 2rem 1rem 2rem 1.5rem;
+    height: 100vh; overflow-y: auto; border-right: 1px solid #e5e7eb;
+    font-size: .85rem; line-height: 1.6;
+  }}
+  .toc ul {{ list-style: none; padding: 0; }}
+  .toc li {{ margin-bottom: .25rem; }}
+  .toc a {{ color: #6b7280; text-decoration: none; display: block; padding: .15rem 0; border-radius: 3px; transition: color .15s; }}
+  .toc a:hover {{ color: #4f46e5; }}
+  .toc a.active {{ color: #4f46e5; font-weight: 500; }}
+  .toc .toc-h2 {{ padding-left: .75rem; }}
+  .toc .toc-h3 {{ padding-left: 1.5rem; font-size: .8rem; }}
+  .main-content {{ flex: 1; min-width: 0; padding: 2rem 2.5rem; }}
   .markdown-body {{ font-size: 1rem; }}
-  @media (max-width: 768px) {{ body {{ padding: 1rem .5rem; }} }}
+  @media (max-width: 900px) {{
+    .toc {{ display: none; }}
+    .main-content {{ padding: 1.5rem 1rem; }}
+  }}
 </style>
 </head>
-<body class="markdown-body">
-<div id="content"></div>
+<body>
+<div class="layout">
+  <nav class="toc" id="toc"></nav>
+  <article class="main-content markdown-body" id="content"></article>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 const b64 = "{content_b64}";
 const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const text = new TextDecoder('utf-8').decode(bytes);
 document.getElementById('content').innerHTML = marked.parse(text);
+
+// Generate TOC
+const headings = document.querySelectorAll('#content h1, #content h2, #content h3');
+const tocEl = document.getElementById('toc');
+let tocHtml = '<ul>';
+headings.forEach((h, i) => {{
+  const id = 'heading-' + i;
+  h.id = id;
+  const level = h.tagName.toLowerCase();
+  tocHtml += '<li><a href="#' + id + '" class="toc-' + level + '">' + h.textContent + '</a></li>';
+}});
+tocHtml += '</ul>';
+tocEl.innerHTML = tocHtml;
+
+// Highlight active TOC item on scroll
+const tocLinks = tocEl.querySelectorAll('a');
+const observer = new IntersectionObserver(entries => {{
+  entries.forEach(entry => {{
+    if (entry.isIntersecting) {{
+      tocLinks.forEach(a => a.classList.remove('active'));
+      const active = tocEl.querySelector('a[href="#' + entry.target.id + '"]');
+      if (active) active.classList.add('active');
+    }}
+  }});
+}}, {{ rootMargin: '0px 0px -70% 0px' }});
+headings.forEach(h => observer.observe(h));
 </script>
 </body>
 </html>"""
