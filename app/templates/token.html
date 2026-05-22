@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Token — HTML Container</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f9fafb; color: #111; min-height: 100vh; }
+    header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: .875rem 1.5rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+    header h1 { font-size: 1.1rem; font-weight: 600; color: #4f46e5; }
+    header nav { display: flex; align-items: center; gap: 1rem; }
+    header a { font-size: .875rem; color: #6b7280; text-decoration: none; }
+    header a:hover { color: #111; }
+    main { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    .form-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .form-row input { padding: .4rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .9rem; flex: 1 1 200px; }
+    .btn { padding: .4rem .8rem; font-size: .85rem; border-radius: 4px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; white-space: nowrap; }
+    .btn:hover { background: #f3f4f6; }
+    .btn-primary { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-danger { border-color: #fca5a5; color: #dc2626; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-copy.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+    .token-list { display: flex; flex-direction: column; gap: .75rem; }
+    .token-item { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+    .token-header { display: flex; justify-content: space-between; align-items: center; }
+    .token-name { font-weight: 600; font-size: .9rem; }
+    .token-value { font-family: monospace; font-size: .8rem; background: #f3f4f6; padding: .3rem .5rem; border-radius: 4px; word-break: break-all; }
+    .token-meta { font-size: .8rem; color: #9ca3af; }
+    .token-actions { display: flex; gap: .5rem; align-items: center; }
+    .empty { text-align: center; color: #9ca3af; padding: 2rem 1rem; font-size: .9rem; }
+
+    .setup-guide { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
+    .setup-guide h3 { font-size: .9rem; font-weight: 600; margin-bottom: .5rem; color: #334155; }
+    .setup-guide pre { background: #1e293b; color: #e2e8f0; padding: .75rem 1rem; border-radius: 4px; font-size: .8rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .setup-guide .copy-cmd { margin-top: .5rem; }
+
+    @media (max-width: 768px) {
+      main { padding: 0 .5rem; margin: 1rem auto; }
+      .card { padding: 1rem; }
+      .form-row { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>API Token</h1>
+    <nav>
+      <a href="/admin">← 返回管理</a>
+      <a href="/admin/logout">退出登录</a>
+    </nav>
+  </header>
+  <main>
+    <div class="card">
+      <h2>创建新 Token</h2>
+      <form class="form-row" method="post" action="/admin/token/create">
+        <input type="text" name="name" placeholder="Token 名称（如：macbook、ci-server）" value="default">
+        <button type="submit" class="btn btn-primary">生成 Token</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>我的 Token</h2>
+      {% if tokens %}
+      <div class="token-list">
+        {% for t in tokens %}
+        <div class="token-item">
+          <div class="token-header">
+            <span class="token-name">{{ t.name }}</span>
+            <div class="token-actions">
+              <button class="btn btn-copy" onclick="copyText(this, '{{ t.token }}')">复制 Token</button>
+              <form method="post" action="/admin/token/{{ t.id }}/delete" style="margin:0;">
+                <button type="submit" class="btn btn-danger">删除</button>
+              </form>
+            </div>
+          </div>
+          <div class="token-value">{{ t.token }}</div>
+          <div class="token-meta">创建于 {{ t.created_at[:16].replace("T"," ") }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">暂无 Token，请先生成一个。</div>
+      {% endif %}
+    </div>
+
+    {% if tokens %}
+    <div class="card">
+      <h2>Claude Code 配置指引</h2>
+      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，将 Token 配置到 Claude Code skill：</p>
+      <div class="setup-guide">
+        <pre id="setup-cmd">mkdir -p ~/.config/html-container
+printf 'API_KEY={{ tokens[0].token }}\nBASE_URL=<span id="base-url-placeholder"></span>\n' > ~/.config/html-container/credentials.env</pre>
+        <button class="btn copy-cmd" onclick="copySetup()">复制配置命令</button>
+      </div>
+      <p style="font-size:.8rem;color:#9ca3af;margin-top:.75rem;">配置完成后，在任何工作区使用 Claude Code 即可通过 skill 自动上传文件。</p>
+    </div>
+    {% endif %}
+  </main>
+  <script>
+    const baseUrlEl = document.getElementById('base-url-placeholder');
+    if (baseUrlEl) baseUrlEl.textContent = location.origin;
+
+    function copyText(btn, text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      btn.textContent = "已复制";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "复制 Token"; btn.classList.remove("copied"); }, 1500);
+    }
+
+    function copySetup() {
+      const pre = document.getElementById('setup-cmd');
+      const ta = document.createElement("textarea");
+      ta.value = pre.textContent;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      const btn = document.querySelector('.copy-cmd');
+      btn.textContent = "已复制";
+      setTimeout(() => { btn.textContent = "复制配置命令"; }, 1500);
+    }
+  </script>
+</body>
+</html>

@@ -26,6 +26,7 @@ API_KEY = os.environ.get("API_KEY", "")
 SESSION_COOKIE = "admin_session"
 SESSION_TTL_HOURS = 24
 TZ_BEIJING = timezone(timedelta(hours=8))
+ALLOWED_EXTENSIONS = (".html", ".md")
 
 
 def hash_password(password: str) -> str:
@@ -110,6 +111,17 @@ def init_db():
         )
     """)
 
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS user_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users(id),
+            token TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL DEFAULT 'default',
+            created_at TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
     cols = [r[1] for r in con.execute("PRAGMA table_info(pages)").fetchall()]
     if "slug" not in cols:
         con.execute("ALTER TABLE pages ADD COLUMN slug TEXT")
@@ -117,7 +129,6 @@ def init_db():
         con.execute("ALTER TABLE pages ADD COLUMN owner_id TEXT")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug) WHERE slug IS NOT NULL")
 
-    # Bootstrap super admin from env vars
     existing_super = con.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1").fetchone()
     if not existing_super:
         global ADMIN_PASSWORD_HASH
@@ -157,14 +168,50 @@ def require_super_admin(user: dict = Depends(get_current_user)):
     return user
 
 
-def require_api_key(request: Request):
+def get_api_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
+    """Authenticate API requests. Supports per-user tokens and legacy global API_KEY."""
     auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing API token")
     token = auth[7:]
-    if not hmac.compare_digest(token, API_KEY):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return True
+
+    # Check per-user tokens first
+    row = db.execute(
+        "SELECT ut.user_id FROM user_tokens ut JOIN users u ON ut.user_id = u.id WHERE ut.token = ? AND ut.is_active = 1 AND u.is_active = 1",
+        (token,),
+    ).fetchone()
+    if row:
+        return row["user_id"]
+
+    # Fallback to legacy global API_KEY
+    if API_KEY and hmac.compare_digest(token, API_KEY):
+        super_admin = db.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1").fetchone()
+        return super_admin["id"] if super_admin else None
+
+    raise HTTPException(status_code=401, detail="Invalid API token")
+
+
+MARKDOWN_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-light.min.css">
+<style>
+  body {{ max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }}
+  .markdown-body {{ font-size: 1rem; }}
+  @media (max-width: 768px) {{ body {{ padding: 1rem .5rem; }} }}
+</style>
+</head>
+<body class="markdown-body">
+<div id="content"></div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+document.getElementById('content').innerHTML = marked.parse(atob("{content_b64}"));
+</script>
+</body>
+</html>"""
 
 
 @asynccontextmanager
@@ -189,7 +236,17 @@ async def view_page(page_id: str, db: sqlite3.Connection = Depends(get_db)):
     file_path = Path(row["file_path"])
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File missing")
-    return HTMLResponse(content=file_path.read_text(encoding="utf-8"))
+
+    content = file_path.read_text(encoding="utf-8")
+    filename = row["original_filename"]
+
+    if filename.endswith(".md"):
+        import base64
+        content_b64 = base64.b64encode(content.encode()).decode()
+        html = MARKDOWN_TEMPLATE.format(title=row["title"], content_b64=content_b64)
+        return HTMLResponse(content=html)
+
+    return HTMLResponse(content=content)
 
 
 # ── Admin: login ──────────────────────────────────────────────────────────────
@@ -248,8 +305,8 @@ async def upload_html(
     db: sqlite3.Connection = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    if not file.filename.endswith(".html"):
-        raise HTTPException(status_code=400, detail="Only .html files allowed")
+    if not any(file.filename.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="仅支持 .html 和 .md 文件")
 
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -319,6 +376,44 @@ async def delete_page(
     db.execute("DELETE FROM pages WHERE id = ?", (page_id,))
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
+
+
+# ── Admin: API Token management ──────────────────────────────────────────────
+
+@app.get("/admin/token", response_class=HTMLResponse)
+async def token_page(request: Request, db: sqlite3.Connection = Depends(get_db), user: dict = Depends(get_current_user)):
+    tokens = [dict(r) for r in db.execute(
+        "SELECT * FROM user_tokens WHERE user_id = ? ORDER BY created_at DESC", (user["id"],)
+    ).fetchall()]
+    return templates.TemplateResponse(request, "token.html", {"tokens": tokens, "user": user})
+
+
+@app.post("/admin/token/create")
+async def create_token(
+    request: Request,
+    name: str = Form("default"),
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    token_id = str(uuid.uuid4())[:8]
+    token_value = secrets.token_urlsafe(32)
+    db.execute(
+        "INSERT INTO user_tokens (id, user_id, token, name, created_at) VALUES (?, ?, ?, ?, ?)",
+        (token_id, user["id"], token_value, name.strip() or "default", datetime.now(TZ_BEIJING).isoformat()),
+    )
+    db.commit()
+    return RedirectResponse(url="/admin/token", status_code=303)
+
+
+@app.post("/admin/token/{token_id}/delete")
+async def delete_token(
+    token_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    db.execute("DELETE FROM user_tokens WHERE id = ? AND user_id = ?", (token_id, user["id"]))
+    db.commit()
+    return RedirectResponse(url="/admin/token", status_code=303)
 
 
 # ── Admin: user management (super admin only) ────────────────────────────────
@@ -455,18 +550,17 @@ async def api_upsert_page(
     title: str = Form(None),
     file: UploadFile = File(...),
     db: sqlite3.Connection = Depends(get_db),
-    _: bool = Depends(require_api_key),
+    owner_id: str = Depends(get_api_user),
 ):
     if not re.match(r"^[\w][\w./-]*$", slug, re.UNICODE):
         raise HTTPException(status_code=400, detail="Invalid slug")
 
+    if not any((file.filename or "").endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="仅支持 .html 和 .md 文件")
+
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
-
-    # API uploads belong to super admin
-    super_admin = db.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1").fetchone()
-    owner_id = super_admin["id"] if super_admin else None
 
     page_title = title or slug
     existing = db.execute("SELECT id, file_path FROM pages WHERE slug = ?", (slug,)).fetchone()
@@ -503,9 +597,9 @@ async def api_upsert_page(
 @app.get("/api/pages")
 async def api_list_pages(
     db: sqlite3.Connection = Depends(get_db),
-    _: bool = Depends(require_api_key),
+    owner_id: str = Depends(get_api_user),
 ):
-    rows = db.execute("SELECT id, title, slug, uploaded_at FROM pages ORDER BY uploaded_at DESC").fetchall()
+    rows = db.execute("SELECT id, title, slug, uploaded_at FROM pages WHERE owner_id = ? ORDER BY uploaded_at DESC", (owner_id,)).fetchall()
     return JSONResponse([{"id": r["id"], "title": r["title"], "slug": r["slug"], "uploaded_at": r["uploaded_at"]} for r in rows])
 
 
@@ -513,11 +607,15 @@ async def api_list_pages(
 async def api_delete_page(
     slug: str,
     db: sqlite3.Connection = Depends(get_db),
-    _: bool = Depends(require_api_key),
+    owner_id: str = Depends(get_api_user),
 ):
-    row = db.execute("SELECT id, file_path FROM pages WHERE slug = ?", (slug,)).fetchone()
+    row = db.execute("SELECT id, file_path, owner_id FROM pages WHERE slug = ?", (slug,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Page not found")
+    if row["owner_id"] != owner_id:
+        user = db.execute("SELECT role FROM users WHERE id = ?", (owner_id,)).fetchone()
+        if not user or user["role"] != "super_admin":
+            raise HTTPException(status_code=403, detail="无权删除此页面")
     fp = Path(row["file_path"])
     if fp.exists():
         fp.unlink()

@@ -199,6 +199,7 @@
     <h1>HTML Container</h1>
     <nav style="display:flex;align-items:center;gap:1rem;">
       <span style="font-size:.8rem;color:#6b7280;">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
+      <a href="/admin/token" style="font-size:.8rem;">API Token</a>
       {% if user.role == 'super_admin' %}
       <a href="/admin/users" style="font-size:.8rem;">用户管理</a>
       {% endif %}
@@ -213,10 +214,10 @@
           <div class="upload-left">
             <div id="drop-zone" class="drop-zone">
               <span class="drop-zone-icon">📄</span>
-              <span class="drop-zone-text">点击选择或拖拽 .html 文件</span>
+              <span class="drop-zone-text">点击选择或拖拽 .html / .md 文件</span>
               <span id="file-name" class="file-name-display"></span>
             </div>
-            <input id="file-input" type="file" name="file" accept=".html" required>
+            <input id="file-input" type="file" name="file" accept=".html,.md" required>
           </div>
           <div class="upload-right">
             <input type="text" name="title" placeholder="标题（用于列表展示）" required>
@@ -322,13 +323,13 @@
     });
     dropZone.addEventListener("drop", e => {
       const file = e.dataTransfer.files[0];
-      if (file && file.name.endsWith(".html")) {
+      if (file && (file.name.endsWith(".html") || file.name.endsWith(".md"))) {
         const dt = new DataTransfer();
         dt.items.add(file);
         fileInput.files = dt.files;
         showFileName(file.name);
       } else {
-        alert("仅支持 .html 文件");
+        alert("仅支持 .html 和 .md 文件");
       }
     });
 
