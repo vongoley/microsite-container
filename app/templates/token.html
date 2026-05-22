@@ -92,24 +92,24 @@
 
     {% if tokens %}
     <div class="card">
-      <h2>一键安装 Claude Code Skill</h2>
-      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，自动安装 skill 脚本并配置 Token：</p>
-      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
-        <button class="btn os-tab active" onclick="switchOS('unix')" id="tab-unix">macOS / Linux</button>
-        <button class="btn os-tab" onclick="switchOS('win')" id="tab-win">Windows (PowerShell)</button>
-      </div>
+      <h2>安装 Claude Code Skill</h2>
+      <p style="font-size:.9rem;color:#6b7280;margin-bottom:1rem;">将以下指令复制给 Claude Code（粘贴到对话框），它会自动完成安装，无需手动操作终端：</p>
       <div class="setup-guide">
-        <pre id="setup-cmd"></pre>
-        <button class="btn copy-cmd" onclick="copySetup()">复制安装命令</button>
+        <pre id="claude-instruction"></pre>
+        <button class="btn copy-cmd" onclick="copyClaudeInstruction()">复制指令</button>
       </div>
-      <p style="font-size:.8rem;color:#9ca3af;margin-top:.75rem;">执行后 Claude Code 即可在任何工作区通过 skill 自动上传 HTML/Markdown 文件。</p>
-      <details style="margin-top:1rem;">
-        <summary style="font-size:.85rem;color:#6b7280;cursor:pointer;">这条命令做了什么？</summary>
-        <ul style="font-size:.8rem;color:#9ca3af;margin-top:.5rem;padding-left:1.2rem;">
-          <li>下载 SKILL.md 和 upload.py 到 ~/.claude/skills/html-container/</li>
-          <li>将 API Token 和服务地址写入 ~/.config/html-container/credentials.env</li>
-          <li>无需手动配置任何其他内容</li>
-        </ul>
+      <details style="margin-top:1.5rem;">
+        <summary style="font-size:.85rem;color:#6b7280;cursor:pointer;">高级：手动终端安装（如果不使用 Claude Code）</summary>
+        <div style="margin-top:.75rem;">
+          <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
+            <button class="btn os-tab active" onclick="switchOS('unix')" id="tab-unix">macOS / Linux</button>
+            <button class="btn os-tab" onclick="switchOS('win')" id="tab-win">Windows (PowerShell)</button>
+          </div>
+          <div class="setup-guide">
+            <pre id="setup-cmd"></pre>
+            <button class="btn copy-cmd" onclick="copySetup()">复制安装命令</button>
+          </div>
+        </div>
       </details>
     </div>
     {% endif %}
@@ -117,6 +117,28 @@
   <script>
     const token = '{{ tokens[0].token if tokens else "" }}';
     let currentOS = 'unix';
+
+    // Claude Code instruction
+    const claudeEl = document.getElementById('claude-instruction');
+    if (claudeEl && token) {
+      const installUrl = location.origin + '/api/install-skill?token=' + token;
+      claudeEl.textContent = '帮我安装 html-container skill。安装脚本地址：' + installUrl + '\n请用 WebFetch 获取该脚本内容，然后将 SKILL.md 写入 ~/.claude/skills/html-container/SKILL.md，upload.py 写入 ~/.claude/skills/html-container/scripts/upload.py，credentials.env 写入 ~/.config/html-container/credentials.env。脚本里有完整的文件内容和凭证信息。';
+    }
+
+    function copyClaudeInstruction() {
+      const el = document.getElementById('claude-instruction');
+      const ta = document.createElement("textarea");
+      ta.value = el.textContent;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      const btn = el.nextElementSibling;
+      btn.textContent = "已复制";
+      setTimeout(() => { btn.textContent = "复制指令"; }, 1500);
+    }
 
     function switchOS(os) {
       currentOS = os;
