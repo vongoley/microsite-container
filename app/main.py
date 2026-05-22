@@ -208,7 +208,10 @@ MARKDOWN_TEMPLATE = """<!DOCTYPE html>
 <div id="content"></div>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-document.getElementById('content').innerHTML = marked.parse(atob("{content_b64}"));
+const b64 = "{content_b64}";
+const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const text = new TextDecoder('utf-8').decode(bytes);
+document.getElementById('content').innerHTML = marked.parse(text);
 </script>
 </body>
 </html>"""
