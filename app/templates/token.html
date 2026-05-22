@@ -89,20 +89,30 @@
 
     {% if tokens %}
     <div class="card">
-      <h2>Claude Code 配置指引</h2>
-      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，将 Token 配置到 Claude Code skill：</p>
+      <h2>一键安装 Claude Code Skill</h2>
+      <p style="font-size:.9rem;color:#6b7280;margin-bottom:.75rem;">在终端执行以下命令，自动安装 skill 脚本并配置 Token（适用于你自己或团队成员的电脑）：</p>
       <div class="setup-guide">
-        <pre id="setup-cmd">mkdir -p ~/.config/html-container
-printf 'API_KEY={{ tokens[0].token }}\nBASE_URL=<span id="base-url-placeholder"></span>\n' > ~/.config/html-container/credentials.env</pre>
-        <button class="btn copy-cmd" onclick="copySetup()">复制配置命令</button>
+        <pre id="setup-cmd"></pre>
+        <button class="btn copy-cmd" onclick="copySetup()">复制安装命令</button>
       </div>
-      <p style="font-size:.8rem;color:#9ca3af;margin-top:.75rem;">配置完成后，在任何工作区使用 Claude Code 即可通过 skill 自动上传文件。</p>
+      <p style="font-size:.8rem;color:#9ca3af;margin-top:.75rem;">执行后 Claude Code 即可在任何工作区通过 skill 自动上传 HTML/Markdown 文件。</p>
+      <details style="margin-top:1rem;">
+        <summary style="font-size:.85rem;color:#6b7280;cursor:pointer;">这条命令做了什么？</summary>
+        <ul style="font-size:.8rem;color:#9ca3af;margin-top:.5rem;padding-left:1.2rem;">
+          <li>下载 SKILL.md 和 upload.py 到 ~/.claude/skills/html-container/</li>
+          <li>将 API Token 和服务地址写入 ~/.config/html-container/credentials.env</li>
+          <li>无需手动配置任何其他内容</li>
+        </ul>
+      </details>
     </div>
     {% endif %}
   </main>
   <script>
-    const baseUrlEl = document.getElementById('base-url-placeholder');
-    if (baseUrlEl) baseUrlEl.textContent = location.origin;
+    const setupCmd = document.getElementById('setup-cmd');
+    if (setupCmd) {
+      const installUrl = location.origin + '/api/install-skill?token={{ tokens[0].token }}';
+      setupCmd.textContent = 'curl -fsSL "' + installUrl + '" | bash';
+    }
 
     function copyText(btn, text) {
       const ta = document.createElement("textarea");
@@ -130,7 +140,7 @@ printf 'API_KEY={{ tokens[0].token }}\nBASE_URL=<span id="base-url-placeholder">
       document.body.removeChild(ta);
       const btn = document.querySelector('.copy-cmd');
       btn.textContent = "已复制";
-      setTimeout(() => { btn.textContent = "复制配置命令"; }, 1500);
+      setTimeout(() => { btn.textContent = "复制安装命令"; }, 1500);
     }
   </script>
 </body>

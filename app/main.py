@@ -624,6 +624,56 @@ async def api_delete_page(
     return JSONResponse({"deleted": slug})
 
 
+# ── Skill install endpoint ────────────────────────────────────────────────────
+
+SKILL_DIR = BASE_DIR / "skill"
+
+@app.get("/api/install-skill")
+async def install_skill(request: Request, token: str = ""):
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing token parameter")
+    base_url = str(request.base_url).rstrip("/")
+    skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    upload_py = (SKILL_DIR / "upload.py").read_text(encoding="utf-8")
+
+    script = f"""#!/usr/bin/env bash
+set -e
+
+SKILL_DIR="$HOME/.claude/skills/html-container"
+SCRIPTS_DIR="$SKILL_DIR/scripts"
+CONFIG_DIR="$HOME/.config/html-container"
+
+echo "Installing HTML Container skill..."
+
+mkdir -p "$SCRIPTS_DIR"
+mkdir -p "$CONFIG_DIR"
+
+cat > "$SKILL_DIR/SKILL.md" << 'SKILL_EOF'
+{skill_md}
+SKILL_EOF
+
+cat > "$SCRIPTS_DIR/upload.py" << 'SCRIPT_EOF'
+{upload_py}
+SCRIPT_EOF
+
+cat > "$CONFIG_DIR/credentials.env" << 'CRED_EOF'
+API_KEY={token}
+BASE_URL={base_url}
+CRED_EOF
+
+chmod +x "$SCRIPTS_DIR/upload.py"
+
+echo ""
+echo "✅ 安装完成！"
+echo "   Skill 路径: $SKILL_DIR"
+echo "   凭证路径: $CONFIG_DIR/credentials.env"
+echo "   服务地址: {base_url}"
+echo ""
+echo "现在可以在任何工作区使用 Claude Code 上传 HTML/Markdown 文件了。"
+"""
+    return Response(content=script, media_type="text/plain")
+
+
 # ── Root redirect ─────────────────────────────────────────────────────────────
 
 @app.get("/")
