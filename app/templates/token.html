@@ -110,7 +110,7 @@
   <script>
     const setupCmd = document.getElementById('setup-cmd');
     if (setupCmd) {
-      const installUrl = location.origin + '/api/install-skill?token={{ tokens[0].token }}';
+      const installUrl = location.origin + '/api/install-skill?token={{ tokens[0].token if tokens else "" }}';
       setupCmd.textContent = 'curl -fsSL "' + installUrl + '" | bash';
     }
 
