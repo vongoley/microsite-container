@@ -344,7 +344,8 @@ async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db)
             (user["id"],),
         ).fetchall()
     pages = [dict(r) for r in rows]
-    return templates.TemplateResponse(request, "admin.html", {"pages": pages, "user": user})
+    owners = sorted({p["owner_name"] for p in pages if p["owner_name"]})
+    return templates.TemplateResponse(request, "admin.html", {"pages": pages, "user": user, "owners": owners})
 
 
 @app.post("/admin/upload")

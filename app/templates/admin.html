@@ -155,6 +155,42 @@
     .ts { color: #9ca3af; font-size: .8rem; white-space: nowrap; }
     .slug-empty { color: #d1d5db; font-size: .8rem; }
 
+    /* Search bar */
+    .search-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .search-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .search-row .field { display: flex; flex-direction: column; gap: .2rem; }
+    .search-row label { font-size: .7rem; color: #9ca3af; padding-left: .1rem; }
+    .search-row input, .search-row select {
+      padding: .45rem .7rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: .85rem;
+      outline: none;
+      background: #fff;
+    }
+    .search-row input:focus, .search-row select:focus { border-color: #4f46e5; }
+    .search-row .field-keyword input { min-width: 220px; }
+    .search-row .field-keyword { flex: 1 1 220px; }
+    .btn-reset {
+      padding: .45rem .9rem;
+      font-size: .85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #f9fafb;
+      cursor: pointer;
+      color: #374151;
+      align-self: flex-end;
+    }
+    .btn-reset:hover { background: #f3f4f6; }
+    .search-count { font-size: .8rem; color: #9ca3af; align-self: flex-end; margin-left: auto; }
+    .no-match { text-align: center; color: #9ca3af; padding: 2rem 1rem; font-size: .9rem; display: none; }
+
     /* Mobile card list */
     .card-list { display: none; }
     .page-card {
@@ -229,8 +265,36 @@
     </div>
 
     {% if pages %}
+    <div class="search-card">
+      <div class="search-row">
+        <div class="field field-keyword">
+          <label for="s-keyword">关键词（标题 / slug）</label>
+          <input type="text" id="s-keyword" placeholder="输入标题或 slug 关键词…">
+        </div>
+        {% if user.role == 'super_admin' %}
+        <div class="field">
+          <label for="s-owner">上传人</label>
+          <select id="s-owner">
+            <option value="">全部</option>
+            {% for o in owners %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="field">
+          <label for="s-from">上传时间从</label>
+          <input type="date" id="s-from">
+        </div>
+        <div class="field">
+          <label for="s-to">到</label>
+          <input type="date" id="s-to">
+        </div>
+        <button type="button" class="btn-reset" onclick="resetSearch()">重置</button>
+        <span class="search-count" id="search-count"></span>
+      </div>
+    </div>
+
     <!-- Desktop: table -->
-    <table>
+    <table id="pages-table">
       <thead>
         <tr>
           <th>标题</th>
@@ -243,7 +307,11 @@
       </thead>
       <tbody>
         {% for p in pages %}
-        <tr>
+        <tr class="page-row"
+            data-title="{{ p.title|lower }}"
+            data-slug="{{ (p.slug or '')|lower }}"
+            data-owner="{{ p.owner_name or '' }}"
+            data-date="{{ p.uploaded_at[:10] }}">
           <td>{{ p.title }}</td>
           <td>
             <div class="link-cell">
@@ -277,7 +345,11 @@
     <!-- Mobile: card list -->
     <div class="card-list">
       {% for p in pages %}
-      <div class="page-card">
+      <div class="page-card page-row"
+           data-title="{{ p.title|lower }}"
+           data-slug="{{ (p.slug or '')|lower }}"
+           data-owner="{{ p.owner_name or '' }}"
+           data-date="{{ p.uploaded_at[:10] }}">
         <div class="page-card-title">
           <span>{{ p.title }}</span>
           <form class="delete-form" method="post" action="/admin/delete/{{ p.id }}"
@@ -303,6 +375,7 @@
       </div>
       {% endfor %}
     </div>
+    <div class="no-match" id="no-match">没有匹配的页面，试试调整搜索条件。</div>
     {% else %}
     <div class="empty">暂无已上传的 HTML，请先上传。</div>
     {% endif %}
@@ -356,6 +429,64 @@
       btn.textContent = "已复制";
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
+    }
+
+    // ── Search / filter ──────────────────────────────────────────
+    const sKeyword = document.getElementById("s-keyword");
+    const sOwner = document.getElementById("s-owner");
+    const sFrom = document.getElementById("s-from");
+    const sTo = document.getElementById("s-to");
+    const searchCount = document.getElementById("search-count");
+    const noMatch = document.getElementById("no-match");
+
+    function applyFilter() {
+      if (!sKeyword) return;
+      const kw = sKeyword.value.trim().toLowerCase();
+      const owner = sOwner ? sOwner.value : "";
+      const from = sFrom.value;  // YYYY-MM-DD or ""
+      const to = sTo.value;
+      const rows = document.querySelectorAll(".page-row");
+      let visible = 0;
+
+      rows.forEach(row => {
+        const title = row.dataset.title || "";
+        const slug = row.dataset.slug || "";
+        const rowOwner = row.dataset.owner || "";
+        const date = row.dataset.date || "";
+
+        let ok = true;
+        if (kw && !(title.includes(kw) || slug.includes(kw))) ok = false;
+        if (owner && rowOwner !== owner) ok = false;
+        if (from && date < from) ok = false;
+        if (to && date > to) ok = false;
+
+        row.style.display = ok ? "" : "none";
+        if (ok) visible++;
+      });
+
+      // De-duplicate count: rows appear in both table and card-list (responsive),
+      // so count unique by half the matched rows.
+      const total = rows.length / 2;
+      const shown = visible / 2;
+      if (searchCount) {
+        const hasFilter = kw || owner || from || to;
+        searchCount.textContent = hasFilter ? `显示 ${shown} / ${total} 项` : `共 ${total} 项`;
+      }
+      if (noMatch) noMatch.style.display = visible === 0 ? "block" : "none";
+    }
+
+    function resetSearch() {
+      if (sKeyword) sKeyword.value = "";
+      if (sOwner) sOwner.value = "";
+      if (sFrom) sFrom.value = "";
+      if (sTo) sTo.value = "";
+      applyFilter();
+    }
+
+    if (sKeyword) {
+      [sKeyword, sFrom, sTo].forEach(el => el && el.addEventListener("input", applyFilter));
+      if (sOwner) sOwner.addEventListener("change", applyFilter);
+      applyFilter();
     }
   </script>
 </body>
