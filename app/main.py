@@ -201,7 +201,7 @@ MARKDOWN_TEMPLATE = """<!DOCTYPE html>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; }}
-  .layout {{ display: flex; max-width: 1200px; margin: 0 auto; min-height: 100vh; }}
+  .layout {{ display: flex; max-width: 1600px; margin: 0 auto; min-height: 100vh; }}
   .toc {{
     position: sticky; top: 0; align-self: flex-start;
     width: 240px; flex-shrink: 0; padding: 2rem 1rem 2rem 1.5rem;
@@ -215,7 +215,7 @@ MARKDOWN_TEMPLATE = """<!DOCTYPE html>
   .toc a.active {{ color: #4f46e5; font-weight: 500; }}
   .toc .toc-h2 {{ padding-left: .75rem; }}
   .toc .toc-h3 {{ padding-left: 1.5rem; font-size: .8rem; }}
-  .main-content {{ flex: 1; min-width: 0; padding: 2rem 2.5rem; }}
+  .main-content {{ flex: 1; min-width: 0; padding: 2rem 3rem; }}
   .markdown-body {{ font-size: 1rem; }}
   @media (max-width: 900px) {{
     .toc {{ display: none; }}
@@ -233,7 +233,21 @@ MARKDOWN_TEMPLATE = """<!DOCTYPE html>
 const b64 = "{content_b64}";
 const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const text = new TextDecoder('utf-8').decode(bytes);
-document.getElementById('content').innerHTML = marked.parse(text);
+
+// Fix CommonMark emphasis failing when ** / * delimiters are adjacent to CJK
+// characters or fullwidth punctuation (e.g. **...CPO）**的). Insert a zero-width
+// space between a CJK char and the delimiter so it becomes left/right-flanking.
+// Code blocks and inline code are protected so source like `a ** b` is untouched.
+function fixCJKEmphasis(md) {{
+  const CJK = '\\u3000-\\u303f\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\uff00-\\uffef';
+  const reBefore = new RegExp('([' + CJK + '])(\\\\*\\\\*|\\\\*|__|_)', 'g');
+  const reAfter = new RegExp('(\\\\*\\\\*|\\\\*|__|_)([' + CJK + '])', 'g');
+  const fixSeg = s => s.replace(reBefore, '$1\\u200b$2').replace(reAfter, '$1\\u200b$2');
+  const parts = md.split(/(```[\\s\\S]*?```|`[^`\\n]*`)/g);
+  return parts.map((p, i) => (i % 2 === 1 ? p : fixSeg(p))).join('');
+}}
+
+document.getElementById('content').innerHTML = marked.parse(fixCJKEmphasis(text));
 
 // Generate TOC
 const headings = document.querySelectorAll('#content h1, #content h2, #content h3');
