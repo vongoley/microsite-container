@@ -455,8 +455,8 @@
             <span class="slug-empty">—</span>
             {% endif %}
           </td>
-          <td>
-            <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+          <td style="white-space:nowrap;">
+            <div style="display:inline-flex;align-items:center;gap:.3rem;">
               {{ vis_badge(p.visibility) }}
               {% if p.visibility == 'password' %}
               <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
