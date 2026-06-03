@@ -725,6 +725,7 @@ async def upload_html(
 
 @app.post("/admin/page/{page_id}/permission")
 async def update_page_permission(
+    request: Request,
     page_id: str,
     visibility: str = Form(...),
     view_password: str = Form(""),
@@ -755,6 +756,15 @@ async def update_page_permission(
     else:
         db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
     db.commit()
+
+    # AJAX callers get JSON so the page can update in place (preserving scroll/filters);
+    # plain form posts fall back to a redirect.
+    if "application/json" in request.headers.get("Accept", ""):
+        allowed = []
+        if visibility == "users_specific":
+            allowed = [r["user_id"] for r in db.execute(
+                "SELECT user_id FROM page_permissions WHERE page_id = ?", (page_id,)).fetchall()]
+        return JSONResponse({"status": "ok", "visibility": visibility, "allowed_ids": allowed})
     return RedirectResponse(url="/admin", status_code=303)
 
 

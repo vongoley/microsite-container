@@ -455,7 +455,7 @@
             <span class="slug-empty">—</span>
             {% endif %}
           </td>
-          <td style="white-space:nowrap;">
+          <td style="white-space:nowrap;" class="vis-cell" data-vis-cell="{{ p.id }}">
             <div style="display:inline-flex;align-items:center;gap:.3rem;">
               {{ vis_badge(p.visibility) }}
               {% if p.visibility == 'password' %}
@@ -467,7 +467,7 @@
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
           <td>
             <div class="ops-cell">
-              <button type="button" class="btn-perm"
+              <button type="button" class="btn-perm" data-perm-btn="{{ p.id }}" data-title="{{ p.title }}"
                       onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
               <form class="delete-form" id="del-{{ p.id }}" method="post" action="/admin/delete/{{ p.id }}" style="margin:0;">
                 <button type="button" onclick='openConfirm("del-{{ p.id }}", {{ p.title|tojson }})'>删除</button>
@@ -507,14 +507,14 @@
         </div>
         <div class="page-card-meta">
           <span class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</span>
-          <span style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+          <span class="vis-cell" data-vis-cell="{{ p.id }}" style="display:inline-flex;gap:.5rem;align-items:center;">
             {{ vis_badge(p.visibility) }}
             {% if p.visibility == 'password' %}
             <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
             {% endif %}
-            <button type="button" class="btn-perm"
-                    onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
           </span>
+          <button type="button" class="btn-perm" data-perm-btn="{{ p.id }}" data-title="{{ p.title }}"
+                  onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
         </div>
       </div>
       {% endfor %}
@@ -800,10 +800,15 @@
     document.getElementById("confirm-cancel").onclick = closeConfirm;
     document.getElementById("confirm-modal").addEventListener("click", e => { if (e.target.id === "confirm-modal") closeConfirm(); });
 
-    // ── Permission edit modal ──
+    // ── Permission edit modal (AJAX save → update row in place) ──
+    const VIS_BADGE = {
+      public: "🌐 公开", private: "🔒 仅我", password: "🔑 密码",
+      users_all: "👥 注册用户", users_specific: "✅ 指定用户",
+    };
+    let permPageId = null, permTitle = null;
     function openPerm(pageId, title, visibility, allowedIds) {
-      const form = document.getElementById("perm-form");
-      form.action = "/admin/page/" + pageId + "/permission";
+      permPageId = pageId; permTitle = title;
+      document.getElementById("perm-form").action = "/admin/page/" + pageId + "/permission";
       document.getElementById("perm-title").textContent = title;
       permVC.setState(visibility, allowedIds);
       document.getElementById("perm-modal").classList.add("open");
@@ -811,6 +816,52 @@
     function closePerm() { document.getElementById("perm-modal").classList.remove("open"); }
     document.getElementById("perm-cancel").onclick = closePerm;
     document.getElementById("perm-modal").addEventListener("click", e => { if (e.target.id === "perm-modal") closePerm(); });
+
+    // Rebuild a page's visibility cell(s) + perm button after an in-place save.
+    function updateRowVisibility(pageId, visibility, allowedIds) {
+      const label = VIS_BADGE[visibility] || VIS_BADGE.public;
+      document.querySelectorAll(`[data-vis-cell="${pageId}"]`).forEach(cell => {
+        let html = `<span class="vis-badge vis-${visibility}">${label}</span>`;
+        if (visibility === "password") {
+          html += ` <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('${pageId}', this)">${COPY_SVG}</button>`;
+        }
+        // table cell wraps in an inline-flex div; card cell is the flex span itself
+        const inner = cell.querySelector("div");
+        if (inner) inner.innerHTML = html; else cell.innerHTML = html;
+      });
+      // Update the perm button's onclick state so re-opening reflects the new value.
+      document.querySelectorAll(`[data-perm-btn="${pageId}"]`).forEach(btn => {
+        const title = btn.dataset.title || "";
+        btn.setAttribute("onclick", `openPerm("${pageId}", ${JSON.stringify(title)}, "${visibility}", ${JSON.stringify(allowedIds || [])})`);
+      });
+    }
+
+    document.getElementById("perm-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const saveBtn = form.querySelector(".btn-confirm");
+      const orig = saveBtn.textContent;
+      saveBtn.textContent = "保存中…"; saveBtn.disabled = true;
+      try {
+        const resp = await fetch(form.action, {
+          method: "POST",
+          headers: { "Accept": "application/json" },
+          body: new FormData(form),
+        });
+        if (!resp.ok) {
+          let msg = "保存失败";
+          try { const d = await resp.json(); if (d.detail) msg = d.detail; } catch (_) {}
+          alert(msg); return;
+        }
+        const data = await resp.json();
+        updateRowVisibility(permPageId, data.visibility, data.allowed_ids);
+        closePerm();
+      } catch (err) {
+        alert("网络错误，保存失败");
+      } finally {
+        saveBtn.textContent = orig; saveBtn.disabled = false;
+      }
+    });
 
     document.addEventListener("keydown", e => { if (e.key === "Escape") { closeConfirm(); closePerm(); } });
 
