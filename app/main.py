@@ -189,6 +189,10 @@ def init_db():
         con.execute("ALTER TABLE pages ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'")
     if "view_password_hash" not in cols:
         con.execute("ALTER TABLE pages ADD COLUMN view_password_hash TEXT")
+    if "view_password_plain" not in cols:
+        # Stored so the owner can re-copy the share password from the admin UI.
+        # These are share access codes (not account passwords) and are meant to be shared.
+        con.execute("ALTER TABLE pages ADD COLUMN view_password_plain TEXT")
     if "access_epoch" not in cols:
         con.execute("ALTER TABLE pages ADD COLUMN access_epoch INTEGER NOT NULL DEFAULT 0")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug) WHERE slug IS NOT NULL")
@@ -317,10 +321,10 @@ def _no_store(resp: Response) -> Response:
     return resp
 
 
-def _bump_and_set_visibility(db, page_id, visibility, view_password_hash):
+def _bump_and_set_visibility(db, page_id, visibility, view_password_hash, view_password_plain):
     db.execute(
-        "UPDATE pages SET visibility=?, view_password_hash=?, access_epoch=access_epoch+1 WHERE id=?",
-        (visibility, view_password_hash, page_id),
+        "UPDATE pages SET visibility=?, view_password_hash=?, view_password_plain=?, access_epoch=access_epoch+1 WHERE id=?",
+        (visibility, view_password_hash, view_password_plain, page_id),
     )
 
 
@@ -708,9 +712,10 @@ async def upload_html(
     file_path = UPLOADS_DIR / f"{page_id}_{safe_name}"
     file_path.write_bytes(content)
 
+    pw_plain = view_password if visibility == "password" else None
     db.execute(
-        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id, visibility, view_password_hash, access_epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
-        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, user["id"], visibility, pw_hash),
+        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id, visibility, view_password_hash, view_password_plain, access_epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, user["id"], visibility, pw_hash, pw_plain),
     )
     if visibility == "users_specific":
         set_page_permissions(db, page_id, allowed_user_ids, user["id"])
@@ -737,16 +742,37 @@ async def update_page_permission(
     # (must be checked BEFORE normalize_visibility, which would reject a blank one).
     if visibility == "password" and not view_password and row["view_password_hash"]:
         pw_hash = row["view_password_hash"]
+        pw_plain = row["view_password_plain"]
     else:
         pw_hash = normalize_visibility(visibility, view_password)
+        pw_plain = view_password if visibility == "password" else None
 
-    _bump_and_set_visibility(db, page_id, visibility, pw_hash if visibility == "password" else None)
+    _bump_and_set_visibility(db, page_id, visibility,
+                             pw_hash if visibility == "password" else None,
+                             pw_plain if visibility == "password" else None)
     if visibility == "users_specific":
         set_page_permissions(db, page_id, allowed_user_ids, user["id"])
     else:
         db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.get("/admin/page/{page_id}/password")
+async def get_page_password(
+    page_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Return the plaintext share password so the owner can copy it. Owner/super_admin only."""
+    row = db.execute("SELECT owner_id, visibility, view_password_plain FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, NOT_FOUND_DETAIL)
+    if user["role"] != "super_admin" and row["owner_id"] != user["id"]:
+        raise HTTPException(403, "无权查看此页面")
+    if row["visibility"] != "password":
+        return JSONResponse({"password": None})
+    return JSONResponse({"password": row["view_password_plain"]})
 
 
 @app.post("/admin/delete/{page_id}")

@@ -244,27 +244,30 @@
     .vc-btn:hover { background: #f3f4f6; }
     .vc-btn.done { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
     .vc-pw-hint { font-size: .72rem; color: #9ca3af; margin-top: .3rem; }
-    .vc-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .4rem; }
-    .vc-chip {
-      display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem;
-      background: #ede9fe; color: #6d28d9; border-radius: 999px; padding: .2rem .6rem;
+    /* users_specific: left (available) / right (selected) two-column layout */
+    .vc-twocol { display: flex; gap: .6rem; }
+    .vc-col { flex: 1; min-width: 0; border: 1px solid #e5e7eb; border-radius: 6px; display: flex; flex-direction: column; }
+    .vc-col-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .4rem .6rem; border-bottom: 1px solid #e5e7eb; font-size: .78rem; color: #6b7280; background: #f9fafb;
     }
-    .vc-chip button { border: none; background: none; color: #6d28d9; cursor: pointer; font-size: .9rem; line-height: 1; padding: 0; }
+    .vc-clear { border: none; background: none; color: #dc2626; cursor: pointer; font-size: .78rem; padding: 0; }
+    .vc-clear:hover { text-decoration: underline; }
     .vc-search {
-      width: 100%; padding: .5rem .7rem; border: 1px solid #d1d5db; border-radius: 6px;
-      font-size: .85rem; outline: none;
+      margin: .4rem .5rem 0; padding: .4rem .6rem; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: .82rem; outline: none;
     }
     .vc-search:focus { border-color: #4f46e5; }
-    .vc-userlist {
-      margin-top: .35rem; max-height: 160px; overflow-y: auto;
-      border: 1px solid #e5e7eb; border-radius: 6px;
+    .vc-list { max-height: 170px; overflow-y: auto; padding: .3rem; }
+    .vc-list:empty::after { content: "无"; color: #d1d5db; font-size: .8rem; display: block; padding: .5rem .4rem; }
+    .vc-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .4rem .55rem; font-size: .84rem; border-radius: 5px; cursor: pointer;
     }
-    .vc-userlist:empty { display: none; }
-    .vc-user-item { padding: .45rem .6rem; font-size: .85rem; cursor: pointer; }
-    .vc-user-item:hover { background: #f3f4f6; }
-    .vc-user-item.added { color: #9ca3af; cursor: default; }
-    .vc-user-item.added:hover { background: none; }
-    .vc-empty-hint { padding: .5rem .6rem; font-size: .8rem; color: #9ca3af; }
+    .vc-item:hover { background: #f3f4f6; }
+    .vc-item .vc-act { color: #4f46e5; font-size: .9rem; flex-shrink: 0; }
+    .vc-item.sel .vc-act { color: #dc2626; }
+    .vc-empty-hint { padding: .5rem .55rem; font-size: .8rem; color: #9ca3af; }
 
     /* Modal */
     .modal-overlay {
@@ -436,7 +439,14 @@
             <span class="slug-empty">—</span>
             {% endif %}
           </td>
-          <td>{{ vis_badge(p.visibility) }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+              {{ vis_badge(p.visibility) }}
+              {% if p.visibility == 'password' %}
+              <button type="button" class="btn-perm" onclick="copyPagePassword('{{ p.id }}', this)">复制密码</button>
+              {% endif %}
+            </div>
+          </td>
           {% if user.role == 'super_admin' %}<td style="font-size:.8rem;color:#6b7280;">{{ p.owner_name or '—' }}</td>{% endif %}
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
           <td>
@@ -481,8 +491,11 @@
         </div>
         <div class="page-card-meta">
           <span class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</span>
-          <span style="display:flex;gap:.5rem;align-items:center;">
+          <span style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
             {{ vis_badge(p.visibility) }}
+            {% if p.visibility == 'password' %}
+            <button type="button" class="btn-perm" onclick="copyPagePassword('{{ p.id }}', this)">复制密码</button>
+            {% endif %}
             <button type="button" class="btn-perm"
                     onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
           </span>
@@ -575,6 +588,28 @@
       setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
     }
 
+    // ── Copy a page's share password from the list (fetches plaintext) ──
+    function plainCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+    }
+    async function copyPagePassword(pageId, btn) {
+      try {
+        const r = await fetch("/admin/page/" + pageId + "/password");
+        if (!r.ok) throw new Error("fetch failed");
+        const data = await r.json();
+        if (!data.password) { btn.textContent = "无密码"; setTimeout(() => { btn.textContent = "复制密码"; }, 1500); return; }
+        plainCopy(data.password);
+        btn.textContent = "已复制";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = "复制密码"; btn.classList.remove("copied"); }, 1500);
+      } catch (e) {
+        btn.textContent = "失败";
+        setTimeout(() => { btn.textContent = "复制密码"; }, 1500);
+      }
+    }
+
     // ── Custom visibility component (dropdown + password gen + user picker) ──
     const ALL_USERS = JSON.parse(document.getElementById("all-users-data").textContent || "[]");
     const VIS_OPTIONS = [
@@ -660,49 +695,75 @@
           };
         } else if (this.value === "users_specific") {
           panel.innerHTML = `
-            <div class="vc-chips"></div>
-            <input type="text" class="vc-search" placeholder="搜索用户名添加…">
-            <div class="vc-userlist"></div>
+            <div class="vc-twocol">
+              <div class="vc-col">
+                <div class="vc-col-head"><span>可选用户</span></div>
+                <input type="text" class="vc-search" placeholder="搜索用户名…">
+                <div class="vc-list vc-available"></div>
+              </div>
+              <div class="vc-col">
+                <div class="vc-col-head">
+                  <span>已选 <span class="vc-sel-count">0</span></span>
+                  <button type="button" class="vc-clear">清空</button>
+                </div>
+                <div class="vc-list vc-selected"></div>
+              </div>
+            </div>
+            <div class="vc-hidden-inputs"></div>
           `;
           this.searchInput = panel.querySelector(".vc-search");
-          this.searchInput.oninput = () => this.renderUserList();
-          this.searchInput.onfocus = () => this.renderUserList();
-          this.renderChips();
+          this.searchInput.oninput = () => this.renderAvailable();
+          panel.querySelector(".vc-clear").onclick = () => {
+            this.selectedUsers = [];
+            this.renderUsers();
+          };
+          this.renderUsers();
         } else {
           panel.innerHTML = "";
         }
       }
-      renderChips() {
-        const chips = this.root.querySelector(".vc-chips");
-        if (!chips) return;
-        chips.innerHTML = this.selectedUsers.map(u =>
-          `<span class="vc-chip">${u.username}<button type="button" data-id="${u.id}">×</button>
-           <input type="hidden" name="allowed_user_ids" value="${u.id}"></span>`
-        ).join("");
-        chips.querySelectorAll("button").forEach(b => {
-          b.onclick = () => {
-            this.selectedUsers = this.selectedUsers.filter(u => u.id !== b.dataset.id);
-            this.renderChips(); this.renderUserList();
-          };
-        });
+      renderUsers() {
+        this.renderAvailable();
+        this.renderSelected();
+        this.renderHiddenInputs();
       }
-      renderUserList() {
-        const list = this.root.querySelector(".vc-userlist");
+      renderAvailable() {
+        const list = this.root.querySelector(".vc-available");
         if (!list) return;
         const q = (this.searchInput.value || "").trim().toLowerCase();
         const selIds = this.selectedUsers.map(u => u.id);
-        const matches = ALL_USERS.filter(u => u.username.toLowerCase().includes(q));
-        if (!q && !matches.length) { list.innerHTML = ""; return; }
-        list.innerHTML = matches.map(u => {
-          const added = selIds.includes(u.id);
-          return `<div class="vc-user-item${added ? " added" : ""}" data-id="${u.id}">${u.username}${added ? " ✓" : ""}</div>`;
-        }).join("") || `<div class="vc-empty-hint">无匹配用户</div>`;
-        list.querySelectorAll(".vc-user-item:not(.added)").forEach(item => {
+        const avail = ALL_USERS.filter(u => !selIds.includes(u.id) && u.username.toLowerCase().includes(q));
+        list.innerHTML = avail.map(u =>
+          `<div class="vc-item" data-id="${u.id}"><span>${u.username}</span><span class="vc-act">+ 添加</span></div>`
+        ).join("");
+        list.querySelectorAll(".vc-item").forEach(item => {
           item.onclick = () => {
             const u = ALL_USERS.find(x => x.id === item.dataset.id);
-            if (u && !selIds.includes(u.id)) { this.selectedUsers.push(u); this.renderChips(); this.renderUserList(); }
+            if (u) { this.selectedUsers.push(u); this.renderUsers(); }
           };
         });
+      }
+      renderSelected() {
+        const list = this.root.querySelector(".vc-selected");
+        if (!list) return;
+        list.innerHTML = this.selectedUsers.map(u =>
+          `<div class="vc-item sel" data-id="${u.id}"><span>${u.username}</span><span class="vc-act">× 移除</span></div>`
+        ).join("");
+        list.querySelectorAll(".vc-item").forEach(item => {
+          item.onclick = () => {
+            this.selectedUsers = this.selectedUsers.filter(u => u.id !== item.dataset.id);
+            this.renderUsers();
+          };
+        });
+        const cnt = this.root.querySelector(".vc-sel-count");
+        if (cnt) cnt.textContent = this.selectedUsers.length;
+      }
+      renderHiddenInputs() {
+        const box = this.root.querySelector(".vc-hidden-inputs");
+        if (!box) return;
+        box.innerHTML = this.selectedUsers.map(u =>
+          `<input type="hidden" name="allowed_user_ids" value="${u.id}">`
+        ).join("");
       }
     }
 
