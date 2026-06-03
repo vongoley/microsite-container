@@ -128,18 +128,19 @@
       border-radius: 4px;
     }
     .link-cell { display: flex; align-items: center; gap: .5rem; }
-    .copy-btn {
-      padding: .2rem .5rem;
-      font-size: .75rem;
+    .copy-btn, .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; padding: 0;
       border: 1px solid #d1d5db;
-      border-radius: 4px;
+      border-radius: 5px;
       background: #fff;
       cursor: pointer;
-      color: #374151;
-      white-space: nowrap;
+      color: #6b7280;
+      flex-shrink: 0;
     }
-    .copy-btn:hover { background: #f3f4f6; }
-    .copy-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+    .copy-btn svg, .icon-btn svg { width: 15px; height: 15px; }
+    .copy-btn:hover, .icon-btn:hover { background: #f3f4f6; color: #4f46e5; }
+    .copy-btn.copied, .icon-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
     .delete-form button {
       padding: .25rem .6rem;
       font-size: .8rem;
@@ -350,6 +351,7 @@
   </header>
   {% set vis_labels = {'public': '🌐 公开', 'private': '🔒 仅我', 'password': '🔑 密码', 'users_all': '👥 注册用户', 'users_specific': '✅ 指定用户'} %}
   {% macro vis_badge(v) %}<span class="vis-badge vis-{{ v or 'public' }}">{{ vis_labels.get(v or 'public', '🌐 公开') }}</span>{% endmacro %}
+  {% set copy_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>{% endset %}
   <main>
     <div class="upload-card">
       <h2>上传 HTML</h2>
@@ -426,14 +428,14 @@
           <td>
             <div class="link-cell">
               <a href="/view/{{ p.id }}" target="_blank" style="font-size:.85rem;color:#4f46e5;">/view/{{ p.id }}</a>
-              <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.id }}')">复制</button>
+              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
             </div>
           </td>
           <td>
             {% if p.slug %}
             <div class="link-cell">
               <a href="/view/{{ p.slug }}" target="_blank" style="font-size:.85rem;color:#6d28d9;word-break:break-all;">/view/{{ p.slug }}</a>
-              <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.slug }}')">复制</button>
+              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
             </div>
             {% else %}
             <span class="slug-empty">—</span>
@@ -443,7 +445,7 @@
             <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
               {{ vis_badge(p.visibility) }}
               {% if p.visibility == 'password' %}
-              <button type="button" class="btn-perm" onclick="copyPagePassword('{{ p.id }}', this)">复制密码</button>
+              <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
               {% endif %}
             </div>
           </td>
@@ -480,12 +482,12 @@
         <div class="page-card-links">
           <div class="link-cell">
             <a href="/view/{{ p.id }}" target="_blank" style="color:#4f46e5;">/view/{{ p.id }}</a>
-            <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.id }}')">复制</button>
+            <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
           </div>
           {% if p.slug %}
           <div class="link-cell">
             <a href="/view/{{ p.slug }}" target="_blank" style="color:#6d28d9;">/view/{{ p.slug }}</a>
-            <button class="copy-btn" onclick="copyLink(this, '/view/{{ p.slug }}')">复制</button>
+            <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
           </div>
           {% endif %}
         </div>
@@ -494,7 +496,7 @@
           <span style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
             {{ vis_badge(p.visibility) }}
             {% if p.visibility == 'password' %}
-            <button type="button" class="btn-perm" onclick="copyPagePassword('{{ p.id }}', this)">复制密码</button>
+            <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
             {% endif %}
             <button type="button" class="btn-perm"
                     onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
@@ -573,40 +575,40 @@
       dropZone.classList.add("has-file");
     }
 
-    function copyLink(btn, path) {
-      const url = location.origin + path;
-      const ta = document.createElement("textarea");
-      ta.value = url;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      btn.textContent = "已复制";
-      btn.classList.add("copied");
-      setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
-    }
+    // Copy icon (classic two-square) for JS-rendered buttons + checkmark for the success flash.
+    const COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
 
-    // ── Copy a page's share password from the list (fetches plaintext) ──
     function plainCopy(text) {
       const ta = document.createElement("textarea");
       ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
       document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
     }
+
+    // Flash an icon button to a green checkmark, then restore its original icon.
+    function flashCopied(btn) {
+      const original = btn.innerHTML;
+      btn.innerHTML = CHECK_SVG;
+      btn.classList.add("copied");
+      setTimeout(() => { btn.innerHTML = original; btn.classList.remove("copied"); }, 1500);
+    }
+
+    function copyLink(btn, path) {
+      plainCopy(location.origin + path);
+      flashCopied(btn);
+    }
+
+    // ── Copy a page's share password from the list (fetches plaintext) ──
     async function copyPagePassword(pageId, btn) {
       try {
         const r = await fetch("/admin/page/" + pageId + "/password");
         if (!r.ok) throw new Error("fetch failed");
         const data = await r.json();
-        if (!data.password) { btn.textContent = "无密码"; setTimeout(() => { btn.textContent = "复制密码"; }, 1500); return; }
+        if (!data.password) { btn.title = "该页面无密码"; return; }
         plainCopy(data.password);
-        btn.textContent = "已复制";
-        btn.classList.add("copied");
-        setTimeout(() => { btn.textContent = "复制密码"; btn.classList.remove("copied"); }, 1500);
+        flashCopied(btn);
       } catch (e) {
-        btn.textContent = "失败";
-        setTimeout(() => { btn.textContent = "复制密码"; }, 1500);
+        btn.title = "复制失败，请重试";
       }
     }
 
@@ -679,7 +681,7 @@
             <div class="vc-pw-row">
               <input type="text" name="view_password" class="vc-pw-input" placeholder="访问密码（≥8位）" autocomplete="off">
               <button type="button" class="vc-btn vc-gen">生成</button>
-              <button type="button" class="vc-btn vc-copy">复制</button>
+              <button type="button" class="copy-btn vc-copy" title="复制密码">${COPY_SVG}</button>
             </div>
             <div class="vc-pw-hint">点击「生成」自动创建强密码；编辑已有页面时留空保持原密码不变</div>
           `;
@@ -687,11 +689,8 @@
           panel.querySelector(".vc-gen").onclick = () => { input.value = genPassword(); };
           panel.querySelector(".vc-copy").onclick = (e) => {
             if (!input.value) { input.value = genPassword(); }
-            const ta = document.createElement("textarea");
-            ta.value = input.value; ta.style.position = "fixed"; ta.style.opacity = "0";
-            document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
-            const b = e.target; b.textContent = "已复制"; b.classList.add("done");
-            setTimeout(() => { b.textContent = "复制"; b.classList.remove("done"); }, 1500);
+            plainCopy(input.value);
+            flashCopied(e.currentTarget);
           };
         } else if (this.value === "users_specific") {
           panel.innerHTML = `

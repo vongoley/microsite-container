@@ -80,6 +80,14 @@
     .btn:hover { background: #f3f4f6; }
     .btn-danger { border-color: #fca5a5; color: #dc2626; }
     .btn-danger:hover { background: #fef2f2; }
+    .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; padding: 0; border: 1px solid #d1d5db; border-radius: 5px;
+      background: #fff; cursor: pointer; color: #6b7280; flex-shrink: 0;
+    }
+    .icon-btn svg { width: 15px; height: 15px; }
+    .icon-btn:hover { background: #f3f4f6; color: #4f46e5; }
+    .icon-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
     .btn-primary {
       background: #4f46e5;
       color: #fff;
@@ -168,7 +176,7 @@
             <td>
               {% if not inv.used_at %}
               <div class="actions">
-                <button class="btn" onclick="copyInviteCode('{{ inv.code }}', this)">复制链接</button>
+                <button class="icon-btn" title="复制邀请链接" onclick="copyInviteCode('{{ inv.code }}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                 <form method="post" action="/admin/users/invite/{{ inv.id }}/delete" style="margin:0;">
                   <button type="submit" class="btn btn-danger">删除</button>
                 </form>
@@ -226,6 +234,7 @@
     </div>
   </main>
   <script>
+    const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
     function copyInviteCode(code, btn) {
       const url = location.origin + '/admin/register/' + code;
       const ta = document.createElement("textarea");
@@ -236,11 +245,10 @@
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
-      btn.textContent = "已复制";
-      btn.style.background = "#d1fae5";
-      btn.style.borderColor = "#6ee7b7";
-      btn.style.color = "#065f46";
-      setTimeout(() => { btn.textContent = "复制链接"; btn.style.background = ""; btn.style.borderColor = ""; btn.style.color = ""; }, 1500);
+      const original = btn.innerHTML;
+      btn.innerHTML = CHECK_SVG;
+      btn.classList.add("copied");
+      setTimeout(() => { btn.innerHTML = original; btn.classList.remove("copied"); }, 1500);
     }
   </script>
 </body>
