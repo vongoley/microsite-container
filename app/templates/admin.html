@@ -128,7 +128,21 @@
       border-radius: 4px;
     }
     .link-cell { display: flex; align-items: center; gap: .5rem; }
-    .copy-btn, .icon-btn {
+    .copy-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; padding: 0;
+      border: none;
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
+      color: #9ca3af;
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+    .copy-btn svg { width: 14px; height: 14px; }
+    .copy-btn:hover { color: #4f46e5; background: #f3f4f6; }
+    .copy-btn.copied { color: #059669; background: none; }
+    .icon-btn {
       display: inline-flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; padding: 0;
       border: 1px solid #d1d5db;
@@ -138,9 +152,9 @@
       color: #6b7280;
       flex-shrink: 0;
     }
-    .copy-btn svg, .icon-btn svg { width: 15px; height: 15px; }
-    .copy-btn:hover, .icon-btn:hover { background: #f3f4f6; color: #4f46e5; }
-    .copy-btn.copied, .icon-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+    .icon-btn svg { width: 15px; height: 15px; }
+    .icon-btn:hover { background: #f3f4f6; color: #4f46e5; }
+    .icon-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
     .delete-form button {
       padding: .25rem .6rem;
       font-size: .8rem;
