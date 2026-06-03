@@ -209,6 +209,63 @@
     .vis-control { padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .9rem; width: 100%; outline: none; }
     .vis-control:focus { border-color: #4f46e5; }
 
+    /* Custom visibility component (replaces native <select>) */
+    .vc { width: 100%; }
+    .vc-dd { position: relative; }
+    .vc-trigger {
+      display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+      width: 100%; padding: .55rem .75rem; border: 1px solid #d1d5db; border-radius: 6px;
+      background: #fff; font-size: .9rem; cursor: pointer; color: #111; text-align: left;
+    }
+    .vc-trigger:hover { border-color: #a5b4fc; }
+    .vc-dd.open .vc-trigger { border-color: #4f46e5; }
+    .vc-arrow { color: #9ca3af; font-size: .7rem; flex-shrink: 0; transition: transform .15s; }
+    .vc-dd.open .vc-arrow { transform: rotate(180deg); }
+    .vc-menu {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; padding: .25rem;
+    }
+    .vc-dd.open .vc-menu { display: block; }
+    .vc-option { padding: .5rem .6rem; font-size: .9rem; border-radius: 5px; cursor: pointer; }
+    .vc-option:hover { background: #f3f4f6; }
+    .vc-option.selected { background: #eef2ff; color: #4f46e5; font-weight: 500; }
+    .vc-panel { margin-top: .5rem; }
+    .vc-pw-row { display: flex; gap: .4rem; }
+    .vc-pw-row input {
+      flex: 1; padding: .5rem .7rem; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: .9rem; outline: none; font-family: monospace;
+    }
+    .vc-pw-row input:focus { border-color: #4f46e5; }
+    .vc-btn {
+      padding: .5rem .7rem; font-size: .8rem; white-space: nowrap;
+      border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: pointer; color: #374151;
+    }
+    .vc-btn:hover { background: #f3f4f6; }
+    .vc-btn.done { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+    .vc-pw-hint { font-size: .72rem; color: #9ca3af; margin-top: .3rem; }
+    .vc-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .4rem; }
+    .vc-chip {
+      display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem;
+      background: #ede9fe; color: #6d28d9; border-radius: 999px; padding: .2rem .6rem;
+    }
+    .vc-chip button { border: none; background: none; color: #6d28d9; cursor: pointer; font-size: .9rem; line-height: 1; padding: 0; }
+    .vc-search {
+      width: 100%; padding: .5rem .7rem; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: .85rem; outline: none;
+    }
+    .vc-search:focus { border-color: #4f46e5; }
+    .vc-userlist {
+      margin-top: .35rem; max-height: 160px; overflow-y: auto;
+      border: 1px solid #e5e7eb; border-radius: 6px;
+    }
+    .vc-userlist:empty { display: none; }
+    .vc-user-item { padding: .45rem .6rem; font-size: .85rem; cursor: pointer; }
+    .vc-user-item:hover { background: #f3f4f6; }
+    .vc-user-item.added { color: #9ca3af; cursor: default; }
+    .vc-user-item.added:hover { background: none; }
+    .vc-empty-hint { padding: .5rem .6rem; font-size: .8rem; color: #9ca3af; }
+
     /* Modal */
     .modal-overlay {
       position: fixed; inset: 0; z-index: 100;
@@ -221,6 +278,7 @@
       background: #fff; border-radius: 12px; padding: 1.5rem;
       width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.25);
     }
+    .modal-card-lg { max-width: 560px; }
     .modal-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: .75rem; }
     .modal-card p { font-size: .9rem; color: #4b5563; margin-bottom: 1rem; line-height: 1.5; }
     .modal-card label { display: block; font-size: .8rem; color: #6b7280; margin: .75rem 0 .25rem; }
@@ -305,18 +363,7 @@
           <div class="upload-right">
             <input type="text" name="title" placeholder="标题（用于列表展示）" required>
             <input type="text" name="slug" placeholder="slug（可选，如 project/name）">
-            <select name="visibility" id="up-visibility" class="vis-control" onchange="onVisChange('up')">
-              <option value="public" selected>🌐 所有人可见（默认）</option>
-              <option value="private">🔒 仅我可见</option>
-              <option value="password">🔑 密码可见</option>
-              <option value="users_all">👥 所有注册用户可见</option>
-              <option value="users_specific">✅ 指定注册用户可见</option>
-            </select>
-            <input type="password" name="view_password" id="up-password" class="vis-control"
-                   placeholder="访问密码（≥8位）" autocomplete="new-password" style="display:none;">
-            <select name="allowed_user_ids" id="up-users" class="vis-control" multiple size="4" style="display:none;">
-              {% for u in all_users %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}
-            </select>
+            <div class="vc" data-vc="up"></div>
             <button type="submit" class="btn-upload">上传</button>
           </div>
         </div>
@@ -463,28 +510,20 @@
 
   <!-- Permission edit modal -->
   <div class="modal-overlay" id="perm-modal">
-    <form class="modal-card" method="post" id="perm-form">
+    <form class="modal-card modal-card-lg" method="post" id="perm-form">
       <h3>访问权限</h3>
-      <p id="perm-title" style="font-weight:600;color:#111;margin-bottom:.5rem;"></p>
+      <p id="perm-title" style="font-weight:600;color:#111;margin-bottom:1rem;"></p>
       <label>可见性</label>
-      <select name="visibility" id="perm-visibility" class="vis-control" onchange="onVisChange('perm')">
-        <option value="public">🌐 所有人可见</option>
-        <option value="private">🔒 仅我可见</option>
-        <option value="password">🔑 密码可见</option>
-        <option value="users_all">👥 所有注册用户可见</option>
-        <option value="users_specific">✅ 指定注册用户可见</option>
-      </select>
-      <input type="password" name="view_password" id="perm-password" class="vis-control"
-             placeholder="访问密码（留空保持不变，新设≥8位）" autocomplete="new-password" style="display:none;margin-top:.5rem;">
-      <select name="allowed_user_ids" id="perm-users" class="vis-control" multiple size="5" style="display:none;margin-top:.5rem;">
-        {% for u in all_users %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}
-      </select>
+      <div class="vc" data-vc="perm"></div>
       <div class="modal-actions">
         <button type="button" class="btn-cancel" id="perm-cancel">取消</button>
         <button type="submit" class="btn-confirm">保存</button>
       </div>
     </form>
   </div>
+
+  <!-- All users data for the visibility component (rendered once) -->
+  <script type="application/json" id="all-users-data">{{ all_users|tojson }}</script>
 
   <script>
     const dropZone = document.getElementById("drop-zone");
@@ -536,14 +575,144 @@
       setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
     }
 
-    // ── Visibility selector toggle (upload form + permission modal) ──
-    function onVisChange(prefix) {
-      const v = document.getElementById(prefix + "-visibility").value;
-      const pw = document.getElementById(prefix + "-password");
-      const users = document.getElementById(prefix + "-users");
-      if (pw) pw.style.display = v === "password" ? "" : "none";
-      if (users) users.style.display = v === "users_specific" ? "" : "none";
+    // ── Custom visibility component (dropdown + password gen + user picker) ──
+    const ALL_USERS = JSON.parse(document.getElementById("all-users-data").textContent || "[]");
+    const VIS_OPTIONS = [
+      { v: "public", label: "🌐 所有人可见（默认）" },
+      { v: "private", label: "🔒 仅我可见" },
+      { v: "password", label: "🔑 密码可见" },
+      { v: "users_all", label: "👥 所有注册用户可见" },
+      { v: "users_specific", label: "✅ 指定注册用户可见" },
+    ];
+    const VIS_LABEL = Object.fromEntries(VIS_OPTIONS.map(o => [o.v, o.label]));
+
+    function genPassword() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+      const arr = new Uint32Array(12);
+      crypto.getRandomValues(arr);
+      return Array.from(arr, n => chars[n % chars.length]).join("");
     }
+
+    class VisibilityControl {
+      constructor(root) {
+        this.root = root;
+        this.value = "public";
+        this.selectedUsers = [];   // array of {id, username}
+        this.render();
+      }
+      setState(visibility, allowedIds) {
+        this.value = visibility || "public";
+        const ids = allowedIds || [];
+        this.selectedUsers = ALL_USERS.filter(u => ids.includes(u.id));
+        this.render();
+      }
+      render() {
+        const v = this.value;
+        this.root.innerHTML = `
+          <div class="vc-dd">
+            <button type="button" class="vc-trigger">
+              <span class="vc-trigger-label">${VIS_LABEL[v]}</span>
+              <span class="vc-arrow">▼</span>
+            </button>
+            <div class="vc-menu">
+              ${VIS_OPTIONS.map(o => `<div class="vc-option${o.v === v ? " selected" : ""}" data-v="${o.v}">${o.label}</div>`).join("")}
+            </div>
+          </div>
+          <input type="hidden" name="visibility" value="${v}">
+          <div class="vc-panel"></div>
+        `;
+        const dd = this.root.querySelector(".vc-dd");
+        this.root.querySelector(".vc-trigger").onclick = e => {
+          e.stopPropagation();
+          document.querySelectorAll(".vc-dd.open").forEach(o => { if (o !== dd) o.classList.remove("open"); });
+          dd.classList.toggle("open");
+        };
+        this.root.querySelectorAll(".vc-option").forEach(opt => {
+          opt.onclick = e => {
+            e.stopPropagation();
+            this.value = opt.dataset.v;
+            dd.classList.remove("open");
+            this.render();
+          };
+        });
+        this.renderPanel();
+      }
+      renderPanel() {
+        const panel = this.root.querySelector(".vc-panel");
+        if (this.value === "password") {
+          panel.innerHTML = `
+            <div class="vc-pw-row">
+              <input type="text" name="view_password" class="vc-pw-input" placeholder="访问密码（≥8位）" autocomplete="off">
+              <button type="button" class="vc-btn vc-gen">生成</button>
+              <button type="button" class="vc-btn vc-copy">复制</button>
+            </div>
+            <div class="vc-pw-hint">点击「生成」自动创建强密码；编辑已有页面时留空保持原密码不变</div>
+          `;
+          const input = panel.querySelector(".vc-pw-input");
+          panel.querySelector(".vc-gen").onclick = () => { input.value = genPassword(); };
+          panel.querySelector(".vc-copy").onclick = (e) => {
+            if (!input.value) { input.value = genPassword(); }
+            const ta = document.createElement("textarea");
+            ta.value = input.value; ta.style.position = "fixed"; ta.style.opacity = "0";
+            document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+            const b = e.target; b.textContent = "已复制"; b.classList.add("done");
+            setTimeout(() => { b.textContent = "复制"; b.classList.remove("done"); }, 1500);
+          };
+        } else if (this.value === "users_specific") {
+          panel.innerHTML = `
+            <div class="vc-chips"></div>
+            <input type="text" class="vc-search" placeholder="搜索用户名添加…">
+            <div class="vc-userlist"></div>
+          `;
+          this.searchInput = panel.querySelector(".vc-search");
+          this.searchInput.oninput = () => this.renderUserList();
+          this.searchInput.onfocus = () => this.renderUserList();
+          this.renderChips();
+        } else {
+          panel.innerHTML = "";
+        }
+      }
+      renderChips() {
+        const chips = this.root.querySelector(".vc-chips");
+        if (!chips) return;
+        chips.innerHTML = this.selectedUsers.map(u =>
+          `<span class="vc-chip">${u.username}<button type="button" data-id="${u.id}">×</button>
+           <input type="hidden" name="allowed_user_ids" value="${u.id}"></span>`
+        ).join("");
+        chips.querySelectorAll("button").forEach(b => {
+          b.onclick = () => {
+            this.selectedUsers = this.selectedUsers.filter(u => u.id !== b.dataset.id);
+            this.renderChips(); this.renderUserList();
+          };
+        });
+      }
+      renderUserList() {
+        const list = this.root.querySelector(".vc-userlist");
+        if (!list) return;
+        const q = (this.searchInput.value || "").trim().toLowerCase();
+        const selIds = this.selectedUsers.map(u => u.id);
+        const matches = ALL_USERS.filter(u => u.username.toLowerCase().includes(q));
+        if (!q && !matches.length) { list.innerHTML = ""; return; }
+        list.innerHTML = matches.map(u => {
+          const added = selIds.includes(u.id);
+          return `<div class="vc-user-item${added ? " added" : ""}" data-id="${u.id}">${u.username}${added ? " ✓" : ""}</div>`;
+        }).join("") || `<div class="vc-empty-hint">无匹配用户</div>`;
+        list.querySelectorAll(".vc-user-item:not(.added)").forEach(item => {
+          item.onclick = () => {
+            const u = ALL_USERS.find(x => x.id === item.dataset.id);
+            if (u && !selIds.includes(u.id)) { this.selectedUsers.push(u); this.renderChips(); this.renderUserList(); }
+          };
+        });
+      }
+    }
+
+    // Close any open dropdown when clicking elsewhere.
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".vc-dd.open").forEach(o => o.classList.remove("open"));
+    });
+
+    const upVC = new VisibilityControl(document.querySelector('[data-vc="up"]'));
+    const permVC = new VisibilityControl(document.querySelector('[data-vc="perm"]'));
 
     // ── Delete confirmation modal ──
     let pendingForm = null;
@@ -562,12 +731,7 @@
       const form = document.getElementById("perm-form");
       form.action = "/admin/page/" + pageId + "/permission";
       document.getElementById("perm-title").textContent = title;
-      document.getElementById("perm-visibility").value = visibility;
-      document.getElementById("perm-password").value = "";
-      const usersSel = document.getElementById("perm-users");
-      const ids = allowedIds || [];
-      Array.from(usersSel.options).forEach(o => { o.selected = ids.includes(o.value); });
-      onVisChange("perm");
+      permVC.setState(visibility, allowedIds);
       document.getElementById("perm-modal").classList.add("open");
     }
     function closePerm() { document.getElementById("perm-modal").classList.remove("open"); }
