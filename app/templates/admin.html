@@ -191,6 +191,51 @@
     .search-count { font-size: .8rem; color: #9ca3af; align-self: flex-end; margin-left: auto; }
     .no-match { text-align: center; color: #9ca3af; padding: 2rem 1rem; font-size: .9rem; display: none; }
 
+    /* Visibility badge */
+    .vis-badge { display: inline-block; font-size: .72rem; padding: .12rem .45rem; border-radius: 4px; white-space: nowrap; }
+    .vis-public { background: #dcfce7; color: #166534; }
+    .vis-private { background: #fee2e2; color: #991b1b; }
+    .vis-password { background: #fef3c7; color: #92400e; }
+    .vis-users_all { background: #dbeafe; color: #1e40af; }
+    .vis-users_specific { background: #ede9fe; color: #6d28d9; }
+    .btn-perm {
+      padding: .25rem .6rem; font-size: .8rem; border: 1px solid #d1d5db;
+      border-radius: 4px; background: #fff; cursor: pointer; color: #374151; white-space: nowrap;
+    }
+    .btn-perm:hover { background: #f3f4f6; }
+    .ops-cell { display: flex; gap: .4rem; align-items: center; }
+
+    /* Upload visibility controls */
+    .vis-control { padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .9rem; width: 100%; outline: none; }
+    .vis-control:focus { border-color: #4f46e5; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: color-mix(in srgb, #000 45%, transparent);
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: #fff; border-radius: 12px; padding: 1.5rem;
+      width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    .modal-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: .75rem; }
+    .modal-card p { font-size: .9rem; color: #4b5563; margin-bottom: 1rem; line-height: 1.5; }
+    .modal-card label { display: block; font-size: .8rem; color: #6b7280; margin: .75rem 0 .25rem; }
+    .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.25rem; }
+    .modal-actions button { padding: .5rem 1.1rem; min-height: 40px; border-radius: 6px; font-size: .9rem; cursor: pointer; border: 1px solid #d1d5db; }
+    .btn-cancel { background: #fff; color: #374151; }
+    .btn-cancel:hover { background: #f3f4f6; }
+    .modal-actions .btn-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .modal-actions .btn-danger:hover { background: #b91c1c; }
+    .modal-actions .btn-confirm { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+    .modal-actions .btn-confirm:hover { background: #4338ca; }
+    @media (max-width: 768px) {
+      .modal-actions button { min-height: 44px; flex: 1; }
+    }
+
     /* Mobile card list */
     .card-list { display: none; }
     .page-card {
@@ -242,6 +287,8 @@
       <a href="/admin/logout">退出登录</a>
     </nav>
   </header>
+  {% set vis_labels = {'public': '🌐 公开', 'private': '🔒 仅我', 'password': '🔑 密码', 'users_all': '👥 注册用户', 'users_specific': '✅ 指定用户'} %}
+  {% macro vis_badge(v) %}<span class="vis-badge vis-{{ v or 'public' }}">{{ vis_labels.get(v or 'public', '🌐 公开') }}</span>{% endmacro %}
   <main>
     <div class="upload-card">
       <h2>上传 HTML</h2>
@@ -258,6 +305,18 @@
           <div class="upload-right">
             <input type="text" name="title" placeholder="标题（用于列表展示）" required>
             <input type="text" name="slug" placeholder="slug（可选，如 project/name）">
+            <select name="visibility" id="up-visibility" class="vis-control" onchange="onVisChange('up')">
+              <option value="public" selected>🌐 所有人可见（默认）</option>
+              <option value="private">🔒 仅我可见</option>
+              <option value="password">🔑 密码可见</option>
+              <option value="users_all">👥 所有注册用户可见</option>
+              <option value="users_specific">✅ 指定注册用户可见</option>
+            </select>
+            <input type="password" name="view_password" id="up-password" class="vis-control"
+                   placeholder="访问密码（≥8位）" autocomplete="new-password" style="display:none;">
+            <select name="allowed_user_ids" id="up-users" class="vis-control" multiple size="4" style="display:none;">
+              {% for u in all_users %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}
+            </select>
             <button type="submit" class="btn-upload">上传</button>
           </div>
         </div>
@@ -300,6 +359,7 @@
           <th>标题</th>
           <th>ID 链接</th>
           <th>Slug 链接</th>
+          <th>可见性</th>
           {% if user.role == 'super_admin' %}<th>所有者</th>{% endif %}
           <th>上传时间</th>
           <th>操作</th>
@@ -329,13 +389,17 @@
             <span class="slug-empty">—</span>
             {% endif %}
           </td>
+          <td>{{ vis_badge(p.visibility) }}</td>
           {% if user.role == 'super_admin' %}<td style="font-size:.8rem;color:#6b7280;">{{ p.owner_name or '—' }}</td>{% endif %}
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
           <td>
-            <form class="delete-form" method="post" action="/admin/delete/{{ p.id }}"
-                  onsubmit="return confirm('确认删除「{{ p.title }}」？')">
-              <button type="submit">删除</button>
-            </form>
+            <div class="ops-cell">
+              <button type="button" class="btn-perm"
+                      onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
+              <form class="delete-form" id="del-{{ p.id }}" method="post" action="/admin/delete/{{ p.id }}" style="margin:0;">
+                <button type="button" onclick='openConfirm("del-{{ p.id }}", {{ p.title|tojson }})'>删除</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -352,9 +416,8 @@
            data-date="{{ p.uploaded_at[:10] }}">
         <div class="page-card-title">
           <span>{{ p.title }}</span>
-          <form class="delete-form" method="post" action="/admin/delete/{{ p.id }}"
-                onsubmit="return confirm('确认删除「{{ p.title }}」？')" style="margin:0;">
-            <button type="submit">删除</button>
+          <form class="delete-form" id="del-{{ p.id }}-card" method="post" action="/admin/delete/{{ p.id }}" style="margin:0;">
+            <button type="button" onclick='openConfirm("del-{{ p.id }}-card", {{ p.title|tojson }})'>删除</button>
           </form>
         </div>
         <div class="page-card-links">
@@ -371,6 +434,11 @@
         </div>
         <div class="page-card-meta">
           <span class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</span>
+          <span style="display:flex;gap:.5rem;align-items:center;">
+            {{ vis_badge(p.visibility) }}
+            <button type="button" class="btn-perm"
+                    onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
+          </span>
         </div>
       </div>
       {% endfor %}
@@ -380,6 +448,43 @@
     <div class="empty">暂无已上传的 HTML，请先上传。</div>
     {% endif %}
   </main>
+
+  <!-- Delete confirm modal -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-card">
+      <h3>确认删除</h3>
+      <p id="confirm-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="confirm-cancel">取消</button>
+        <button type="button" class="btn-danger" id="confirm-ok">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permission edit modal -->
+  <div class="modal-overlay" id="perm-modal">
+    <form class="modal-card" method="post" id="perm-form">
+      <h3>访问权限</h3>
+      <p id="perm-title" style="font-weight:600;color:#111;margin-bottom:.5rem;"></p>
+      <label>可见性</label>
+      <select name="visibility" id="perm-visibility" class="vis-control" onchange="onVisChange('perm')">
+        <option value="public">🌐 所有人可见</option>
+        <option value="private">🔒 仅我可见</option>
+        <option value="password">🔑 密码可见</option>
+        <option value="users_all">👥 所有注册用户可见</option>
+        <option value="users_specific">✅ 指定注册用户可见</option>
+      </select>
+      <input type="password" name="view_password" id="perm-password" class="vis-control"
+             placeholder="访问密码（留空保持不变，新设≥8位）" autocomplete="new-password" style="display:none;margin-top:.5rem;">
+      <select name="allowed_user_ids" id="perm-users" class="vis-control" multiple size="5" style="display:none;margin-top:.5rem;">
+        {% for u in all_users %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}
+      </select>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="perm-cancel">取消</button>
+        <button type="submit" class="btn-confirm">保存</button>
+      </div>
+    </form>
+  </div>
 
   <script>
     const dropZone = document.getElementById("drop-zone");
@@ -430,6 +535,46 @@
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1500);
     }
+
+    // ── Visibility selector toggle (upload form + permission modal) ──
+    function onVisChange(prefix) {
+      const v = document.getElementById(prefix + "-visibility").value;
+      const pw = document.getElementById(prefix + "-password");
+      const users = document.getElementById(prefix + "-users");
+      if (pw) pw.style.display = v === "password" ? "" : "none";
+      if (users) users.style.display = v === "users_specific" ? "" : "none";
+    }
+
+    // ── Delete confirmation modal ──
+    let pendingForm = null;
+    function openConfirm(formId, title) {
+      pendingForm = document.getElementById(formId);
+      document.getElementById("confirm-msg").textContent = `确认删除「${title}」？此操作不可撤销。`;
+      document.getElementById("confirm-modal").classList.add("open");
+    }
+    function closeConfirm() { document.getElementById("confirm-modal").classList.remove("open"); pendingForm = null; }
+    document.getElementById("confirm-ok").onclick = () => { if (pendingForm) pendingForm.submit(); };
+    document.getElementById("confirm-cancel").onclick = closeConfirm;
+    document.getElementById("confirm-modal").addEventListener("click", e => { if (e.target.id === "confirm-modal") closeConfirm(); });
+
+    // ── Permission edit modal ──
+    function openPerm(pageId, title, visibility, allowedIds) {
+      const form = document.getElementById("perm-form");
+      form.action = "/admin/page/" + pageId + "/permission";
+      document.getElementById("perm-title").textContent = title;
+      document.getElementById("perm-visibility").value = visibility;
+      document.getElementById("perm-password").value = "";
+      const usersSel = document.getElementById("perm-users");
+      const ids = allowedIds || [];
+      Array.from(usersSel.options).forEach(o => { o.selected = ids.includes(o.value); });
+      onVisChange("perm");
+      document.getElementById("perm-modal").classList.add("open");
+    }
+    function closePerm() { document.getElementById("perm-modal").classList.remove("open"); }
+    document.getElementById("perm-cancel").onclick = closePerm;
+    document.getElementById("perm-modal").addEventListener("click", e => { if (e.target.id === "perm-modal") closePerm(); });
+
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { closeConfirm(); closePerm(); } });
 
     // ── Search / filter ──────────────────────────────────────────
     const sKeyword = document.getElementById("s-keyword");

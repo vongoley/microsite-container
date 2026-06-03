@@ -28,6 +28,17 @@ SESSION_TTL_HOURS = 24
 TZ_BEIJING = timezone(timedelta(hours=8))
 ALLOWED_EXTENSIONS = (".html", ".md")
 
+VALID_VISIBILITY = {"public", "private", "password", "users_all", "users_specific"}
+PV_COOKIE_PREFIX = "pv_"
+PV_TTL_HOURS = 12
+PV_SIG_PREFIX = "pv1"            # domain separation — must never collide with session tokens
+MIN_VIEW_PASSWORD_LEN = 8       # hardened; bare sha256 demands real entropy
+# Default OFF so HTTP deployments (e.g. company intranet) work; set "1" for HTTPS-only.
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"
+UNLOCK_MAX_ATTEMPTS = 5         # per (ip, page_id) window
+UNLOCK_WINDOW_SECONDS = 60
+NOT_FOUND_DETAIL = "Page not found"   # uniform message for all not-found AND deny
+
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -60,6 +71,53 @@ def verify_session_token(token: str):
         return user_id
     except Exception:
         return None
+
+
+def _pv_pwfp(page_id: str, view_password_hash) -> str:
+    """Fingerprint of the current password hash; '' when no hash (a distinct value)."""
+    msg = f"{PV_SIG_PREFIX}:pwfp:{page_id}:{view_password_hash or ''}"
+    return hmac.new(SESSION_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def make_pv_token(page_id: str, access_epoch: int, view_password_hash) -> str:
+    ts = int(datetime.now(TZ_BEIJING).timestamp())
+    pwfp = _pv_pwfp(page_id, view_password_hash)
+    payload = f"{PV_SIG_PREFIX}:{page_id}:{access_epoch}:{pwfp}:{ts}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}:{sig}"
+
+
+def verify_pv_token(token: str, page_id: str, access_epoch: int, view_password_hash) -> bool:
+    try:
+        payload, sig = token.rsplit(":", 1)
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return False
+        parts = payload.split(":")
+        if len(parts) != 5:
+            return False
+        prefix, tok_pid, tok_epoch, tok_pwfp, tok_ts = parts
+        if not hmac.compare_digest(prefix, PV_SIG_PREFIX):       # domain separation
+            return False
+        if not hmac.compare_digest(tok_pid, page_id):            # bound to THIS page
+            return False
+        if int(tok_epoch) != int(access_epoch):                  # monotonic revocation
+            return False
+        if not hmac.compare_digest(tok_pwfp, _pv_pwfp(page_id, view_password_hash)):
+            return False                                         # password-change revocation
+        now = int(datetime.now(TZ_BEIJING).timestamp())
+        created = int(tok_ts)
+        if now - created > PV_TTL_HOURS * 3600:                  # TTL
+            return False
+        if created - now > 300:                                  # reject far-future ts (skew guard)
+            return False
+        return True
+    except Exception:
+        return False   # fail closed
+
+
+def pv_cookie_name(page_id: str) -> str:
+    return PV_COOKIE_PREFIX + page_id
 
 
 def get_db():
@@ -127,7 +185,27 @@ def init_db():
         con.execute("ALTER TABLE pages ADD COLUMN slug TEXT")
     if "owner_id" not in cols:
         con.execute("ALTER TABLE pages ADD COLUMN owner_id TEXT")
+    if "visibility" not in cols:
+        con.execute("ALTER TABLE pages ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'")
+    if "view_password_hash" not in cols:
+        con.execute("ALTER TABLE pages ADD COLUMN view_password_hash TEXT")
+    if "access_epoch" not in cols:
+        con.execute("ALTER TABLE pages ADD COLUMN access_epoch INTEGER NOT NULL DEFAULT 0")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug) WHERE slug IS NOT NULL")
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS page_permissions (
+            page_id    TEXT NOT NULL,
+            user_id    TEXT NOT NULL,
+            granted_at TEXT NOT NULL,
+            granted_by TEXT,
+            PRIMARY KEY (page_id, user_id)
+        )
+    """)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_pp_page ON page_permissions(page_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_pp_user ON page_permissions(user_id)")
+    # Orphan sweep: drop grants for pages that no longer exist (neutralizes 8-char id reuse).
+    con.execute("DELETE FROM page_permissions WHERE page_id NOT IN (SELECT id FROM pages)")
 
     existing_super = con.execute("SELECT id FROM users WHERE role = 'super_admin' LIMIT 1").fetchone()
     if not existing_super:
@@ -166,6 +244,143 @@ def require_super_admin(user: dict = Depends(get_current_user)):
     if user["role"] != "super_admin":
         raise HTTPException(status_code=403, detail="需要超级管理员权限")
     return user
+
+
+def resolve_optional_user(request: Request, db: sqlite3.Connection):
+    """Plain function (NOT a dependency): returns the logged-in user dict or None.
+    Never raises/redirects — the view route is semi-public."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    user_id = verify_session_token(token)
+    if not user_id:
+        return None
+    row = db.execute("SELECT * FROM users WHERE id = ? AND is_active = 1", (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def can_view(page: dict, user, request: Request, db: sqlite3.Connection) -> str:
+    """Returns 'allow' | 'deny' | 'password'. Fails closed on any error."""
+    try:
+        vis = page.get("visibility") or "public"
+
+        if vis == "public":
+            return "allow"
+
+        # Owner / super_admin bypass for all non-public modes (defensive non-None equality).
+        if user is not None:
+            if user.get("role") == "super_admin":
+                return "allow"
+            if page.get("owner_id") is not None and page["owner_id"] == user["id"]:
+                return "allow"
+
+        if vis == "private":
+            return "deny"
+
+        if vis == "users_all":
+            return "allow" if user is not None else "deny"
+
+        if vis == "users_specific":
+            if user is None:
+                return "deny"
+            granted = db.execute(
+                "SELECT 1 FROM page_permissions pp JOIN users u ON u.id = pp.user_id "
+                "WHERE pp.page_id = ? AND pp.user_id = ? AND u.is_active = 1",
+                (page["id"], user["id"]),
+            ).fetchone()
+            return "allow" if granted else "deny"
+
+        if vis == "password":
+            pw_hash = page.get("view_password_hash")
+            if not pw_hash:
+                return "deny"   # misconfigured -> fail closed
+            cookie = request.cookies.get(pv_cookie_name(page["id"]))
+            if cookie and verify_pv_token(cookie, page["id"], page["access_epoch"], pw_hash):
+                return "allow"
+            return "password"
+
+        return "deny"   # unknown visibility -> fail closed
+    except Exception:
+        return "deny"
+
+
+def _resolve_page(db: sqlite3.Connection, page_id: str):
+    row = db.execute("SELECT * FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if not row:
+        row = db.execute("SELECT * FROM pages WHERE slug = ?", (page_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _no_store(resp: Response) -> Response:
+    resp.headers["Cache-Control"] = "private, no-store, max-age=0"
+    resp.headers["Vary"] = "Cookie"
+    return resp
+
+
+def _bump_and_set_visibility(db, page_id, visibility, view_password_hash):
+    db.execute(
+        "UPDATE pages SET visibility=?, view_password_hash=?, access_epoch=access_epoch+1 WHERE id=?",
+        (visibility, view_password_hash, page_id),
+    )
+
+
+def set_page_permissions(db, page_id, user_ids, granted_by):
+    db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
+    now = datetime.now(TZ_BEIJING).isoformat()
+    for uid in set(user_ids):
+        valid = db.execute("SELECT 1 FROM users WHERE id = ? AND is_active = 1", (uid,)).fetchone()
+        if valid:
+            db.execute(
+                "INSERT OR IGNORE INTO page_permissions (page_id, user_id, granted_at, granted_by) VALUES (?,?,?,?)",
+                (page_id, uid, now, granted_by),
+            )
+
+
+def normalize_visibility(visibility: str, view_password: str):
+    """Validate visibility; return the password hash to store (or None)."""
+    if visibility not in VALID_VISIBILITY:
+        raise HTTPException(400, "无效的可见性设置")
+    if visibility == "password":
+        if not view_password or len(view_password) < MIN_VIEW_PASSWORD_LEN:
+            raise HTTPException(400, f"密码模式需要至少 {MIN_VIEW_PASSWORD_LEN} 位访问密码")
+        return hash_password(view_password)
+    return None
+
+
+# Simple in-process rate limiter for the unlock endpoint: {(ip, page_id): [monotonic ts]}
+import time as _time
+import threading as _threading
+_unlock_attempts: dict = {}
+_unlock_lock = _threading.Lock()
+
+
+def _unlock_rate_ok(ip: str, page_id: str) -> bool:
+    """True if under the failed-attempt limit. Does NOT record — call _unlock_record_fail
+    only on a WRONG password, so successful unlocks never count toward the limit."""
+    now = _time.monotonic()
+    key = (ip, page_id)
+    with _unlock_lock:
+        bucket = [t for t in _unlock_attempts.get(key, []) if now - t < UNLOCK_WINDOW_SECONDS]
+        _unlock_attempts[key] = bucket
+        return len(bucket) < UNLOCK_MAX_ATTEMPTS
+
+
+def _unlock_record_fail(ip: str, page_id: str):
+    now = _time.monotonic()
+    key = (ip, page_id)
+    with _unlock_lock:
+        bucket = [t for t in _unlock_attempts.get(key, []) if now - t < UNLOCK_WINDOW_SECONDS]
+        bucket.append(now)
+        _unlock_attempts[key] = bucket
+
+
+def _client_ip(request: Request) -> str:
+    """Prefer X-Forwarded-For (set by the nginx reverse proxy) so the rate limit
+    is per real client, not per proxy IP. Falls back to the socket peer."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "?"
 
 
 def get_api_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
@@ -292,26 +507,87 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # ── Public: view shared page ──────────────────────────────────────────────────
 
 @app.get("/view/{page_id:path}", response_class=HTMLResponse)
-async def view_page(page_id: str, db: sqlite3.Connection = Depends(get_db)):
-    row = db.execute("SELECT * FROM pages WHERE id = ?", (page_id,)).fetchone()
-    if not row:
-        row = db.execute("SELECT * FROM pages WHERE slug = ?", (page_id,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Page not found")
-    file_path = Path(row["file_path"])
+async def view_page(page_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    import base64
+    page = _resolve_page(db, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+
+    user = resolve_optional_user(request, db)
+    decision = can_view(page, user, request, db)
+
+    # DENY is indistinguishable from genuinely-not-found (no existence/mode leak).
+    if decision == "deny":
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+
+    if decision == "password":
+        resp = templates.TemplateResponse(
+            request, "view_password.html",
+            {"page_id": page["id"], "title": page["title"], "error": None},
+            status_code=401,
+        )
+        return _no_store(resp)
+
+    # ── ALLOW ──
+    file_path = Path(page["file_path"])
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File missing")
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
 
     content = file_path.read_text(encoding="utf-8")
-    filename = row["original_filename"]
-
-    if filename.endswith(".md"):
-        import base64
+    if page["original_filename"].endswith(".md"):
         content_b64 = base64.b64encode(content.encode()).decode()
-        html = MARKDOWN_TEMPLATE.format(title=row["title"], content_b64=content_b64)
-        return HTMLResponse(content=html)
+        html = MARKDOWN_TEMPLATE.format(title=page["title"], content_b64=content_b64)
+        resp = HTMLResponse(content=html)
+    else:
+        resp = HTMLResponse(content=content)
 
-    return HTMLResponse(content=content)
+    if (page.get("visibility") or "public") != "public":
+        _no_store(resp)
+    return resp
+
+
+@app.post("/unlock/{page_id:path}")
+async def unlock_page(
+    page_id: str,
+    request: Request,
+    password: str = Form(...),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    # Accept ONLY the canonical id (form action always emits it) — avoids greedy-path confusion.
+    row = db.execute("SELECT * FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+    page = dict(row)
+
+    ip = _client_ip(request)
+    if not _unlock_rate_ok(ip, page["id"]):
+        resp = templates.TemplateResponse(
+            request, "view_password.html",
+            {"page_id": page["id"], "title": page["title"], "error": "尝试次数过多，请稍后再试"},
+            status_code=429,
+        )
+        return _no_store(resp)
+
+    if page["visibility"] != "password" or not page["view_password_hash"]:
+        return RedirectResponse(url=f"/view/{page['id']}", status_code=303)
+
+    if not hmac.compare_digest(hash_password(password), page["view_password_hash"]):
+        _unlock_record_fail(ip, page["id"])   # only WRONG passwords count toward the limit
+        resp = templates.TemplateResponse(
+            request, "view_password.html",
+            {"page_id": page["id"], "title": page["title"], "error": "密码错误"},
+            status_code=401,
+        )
+        return _no_store(resp)
+
+    token = make_pv_token(page["id"], page["access_epoch"], page["view_password_hash"])
+    resp = RedirectResponse(url=f"/view/{page['id']}", status_code=303)
+    resp.set_cookie(
+        pv_cookie_name(page["id"]), token,
+        httponly=True, samesite="lax", secure=COOKIE_SECURE,
+        max_age=PV_TTL_HOURS * 3600, path="/view",
+    )
+    return resp
 
 
 # ── Admin: login ──────────────────────────────────────────────────────────────
@@ -332,7 +608,7 @@ async def login(
     if user and hmac.compare_digest(hash_password(password), user["password_hash"]):
         token = make_session_token(user["id"], user["username"])
         resp = RedirectResponse(url="/admin", status_code=303)
-        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=SESSION_TTL_HOURS * 3600)
+        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=SESSION_TTL_HOURS * 3600)
         return resp
     return templates.TemplateResponse(request, "login.html", {"error": "用户名或密码错误"}, status_code=401)
 
@@ -358,8 +634,17 @@ async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db)
             (user["id"],),
         ).fetchall()
     pages = [dict(r) for r in rows]
+    for p in pages:
+        if p.get("visibility") == "users_specific":
+            p["allowed_ids"] = [r["user_id"] for r in db.execute(
+                "SELECT user_id FROM page_permissions WHERE page_id = ?", (p["id"],)).fetchall()]
+        else:
+            p["allowed_ids"] = []
     owners = sorted({p["owner_name"] for p in pages if p["owner_name"]})
-    return templates.TemplateResponse(request, "admin.html", {"pages": pages, "user": user, "owners": owners})
+    all_users = [dict(r) for r in db.execute(
+        "SELECT id, username FROM users WHERE is_active = 1 ORDER BY username").fetchall()]
+    return templates.TemplateResponse(request, "admin.html",
+        {"pages": pages, "user": user, "owners": owners, "all_users": all_users})
 
 
 @app.post("/admin/upload")
@@ -368,11 +653,17 @@ async def upload_html(
     title: str = Form(...),
     file: UploadFile = File(...),
     slug: str = Form(""),
+    visibility: str = Form("public"),
+    view_password: str = Form(""),
+    allowed_user_ids: list[str] = Form([]),
     db: sqlite3.Connection = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    if not any(file.filename.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+    if not any((file.filename or "").endswith(ext) for ext in ALLOWED_EXTENSIONS):
         raise HTTPException(status_code=400, detail="仅支持 .html 和 .md 文件")
+
+    # Validate visibility up front (applies to new-page creation only).
+    pw_hash = normalize_visibility(visibility, view_password)
 
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -418,9 +709,42 @@ async def upload_html(
     file_path.write_bytes(content)
 
     db.execute(
-        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, user["id"]),
+        "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id, visibility, view_password_hash, access_epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        (page_id, title, file.filename, datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, user["id"], visibility, pw_hash),
     )
+    if visibility == "users_specific":
+        set_page_permissions(db, page_id, allowed_user_ids, user["id"])
+    db.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.post("/admin/page/{page_id}/permission")
+async def update_page_permission(
+    page_id: str,
+    visibility: str = Form(...),
+    view_password: str = Form(""),
+    allowed_user_ids: list[str] = Form([]),
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    row = db.execute("SELECT * FROM pages WHERE id = ?", (page_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, NOT_FOUND_DETAIL)
+    if user["role"] != "super_admin" and row["owner_id"] != user["id"]:
+        raise HTTPException(403, "无权修改此页面")
+
+    # Keep existing password when staying in password mode with a blank field
+    # (must be checked BEFORE normalize_visibility, which would reject a blank one).
+    if visibility == "password" and not view_password and row["view_password_hash"]:
+        pw_hash = row["view_password_hash"]
+    else:
+        pw_hash = normalize_visibility(visibility, view_password)
+
+    _bump_and_set_visibility(db, page_id, visibility, pw_hash if visibility == "password" else None)
+    if visibility == "users_specific":
+        set_page_permissions(db, page_id, allowed_user_ids, user["id"])
+    else:
+        db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -440,6 +764,7 @@ async def delete_page(
     if fp.exists():
         fp.unlink()
     db.execute("DELETE FROM pages WHERE id = ?", (page_id,))
+    db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
     db.commit()
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -536,6 +861,9 @@ async def toggle_user(
         raise HTTPException(status_code=400, detail="不能禁用自己")
     new_status = 0 if target["is_active"] else 1
     db.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+    if new_status == 0:
+        # Purge grants so a later re-enable does not silently restore shares.
+        db.execute("DELETE FROM page_permissions WHERE user_id = ?", (user_id,))
     db.commit()
     return RedirectResponse(url="/admin/users", status_code=303)
 
@@ -629,15 +957,22 @@ async def api_upsert_page(
         raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
 
     page_title = title or slug
-    existing = db.execute("SELECT id, file_path FROM pages WHERE slug = ?", (slug,)).fetchone()
+    existing = db.execute("SELECT id, file_path, owner_id FROM pages WHERE slug = ?", (slug,)).fetchone()
 
     if existing:
+        # Ownership guard: only the owner (or super_admin) may replace an existing page.
+        if existing["owner_id"] != owner_id:
+            u = db.execute("SELECT role FROM users WHERE id = ?", (owner_id,)).fetchone()
+            if not u or u["role"] != "super_admin":
+                raise HTTPException(status_code=403, detail="无权替换此页面")
         old_fp = Path(existing["file_path"])
         if old_fp.exists():
             old_fp.unlink()
         safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename or "page.html")
         file_path = UPLOADS_DIR / f"{existing['id']}_{safe_name}"
         file_path.write_bytes(content)
+        # Note: visibility/view_password_hash/access_epoch deliberately NOT touched —
+        # an API re-upload never downgrades a gated page.
         db.execute(
             "UPDATE pages SET title=?, original_filename=?, uploaded_at=?, file_path=? WHERE slug=?",
             (page_title, file.filename or "page.html", datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug),
@@ -686,6 +1021,7 @@ async def api_delete_page(
     if fp.exists():
         fp.unlink()
     db.execute("DELETE FROM pages WHERE id = ?", (row["id"],))
+    db.execute("DELETE FROM page_permissions WHERE page_id = ?", (row["id"],))
     db.commit()
     return JSONResponse({"deleted": slug})
 
