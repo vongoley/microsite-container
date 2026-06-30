@@ -117,6 +117,31 @@
 
     .actions { display: flex; gap: .5rem; flex-wrap: wrap; }
 
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(17, 24, 39, .5);
+      align-items: center; justify-content: center;
+      z-index: 100; padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 10px;
+      padding: 1.5rem; width: 100%; max-width: 420px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.2);
+    }
+    .modal h3 { font-size: 1rem; font-weight: 600; margin-bottom: .75rem; }
+    .modal p { font-size: .9rem; color: #4b5563; line-height: 1.5; margin-bottom: 1.25rem; word-break: break-word; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+    .pw-box {
+      display: flex; align-items: center; gap: .5rem;
+      background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+      padding: .5rem .75rem; margin-bottom: 1.25rem;
+    }
+    .pw-box code { font-family: monospace; font-size: .95rem; flex: 1; word-break: break-all; }
+    .pw-hint { font-size: .8rem; color: #b45309; margin-bottom: 1rem; }
+
     @media (max-width: 768px) {
       main { padding: 0 .5rem; margin: 1rem auto; }
       .card { padding: 1rem; }
@@ -177,9 +202,11 @@
               {% if not inv.used_at %}
               <div class="actions">
                 <button class="icon-btn" title="复制邀请链接" onclick="copyInviteCode('{{ inv.code }}', this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
-                <form method="post" action="/admin/users/invite/{{ inv.id }}/delete" style="margin:0;">
-                  <button type="submit" class="btn btn-danger">删除</button>
-                </form>
+                <button type="button" class="btn btn-danger"
+                        data-action="/admin/users/invite/{{ inv.id }}/delete"
+                        data-confirm="确定要删除这条未使用的邀请吗？删除后该邀请链接将立即失效。">
+                  删除
+                </button>
               </div>
               {% else %}
               <span style="color:#9ca3af;font-size:.8rem;">—</span>
@@ -215,13 +242,23 @@
             <td>
               {% if u.id != user.id %}
               <div class="actions">
-                <form method="post" action="/admin/users/{{ u.id }}/toggle" style="margin:0;">
-                  <button type="submit" class="btn {{ 'btn-danger' if u.is_active else '' }}">{{ '禁用' if u.is_active else '启用' }}</button>
-                </form>
-                <form method="post" action="/admin/users/{{ u.id }}/role" style="margin:0;">
-                  <input type="hidden" name="role" value="{{ 'admin' if u.role == 'super_admin' else 'super_admin' }}">
-                  <button type="submit" class="btn">{{ '降为管理员' if u.role == 'super_admin' else '升为超管' }}</button>
-                </form>
+                <button type="button" class="btn {{ 'btn-danger' if u.is_active else '' }}"
+                        data-action="/admin/users/{{ u.id }}/toggle"
+                        data-confirm="确定要{{ '禁用' if u.is_active else '启用' }}用户「{{ u.username }}」吗？{{ '禁用后将清除该用户的所有页面权限。' if u.is_active else '' }}">
+                  {{ '禁用' if u.is_active else '启用' }}
+                </button>
+                <button type="button" class="btn"
+                        data-action="/admin/users/{{ u.id }}/role"
+                        data-role="{{ 'admin' if u.role == 'super_admin' else 'super_admin' }}"
+                        data-confirm="确定要将用户「{{ u.username }}」{{ '降为普通管理员' if u.role == 'super_admin' else '升为超级管理员' }}吗？">
+                  {{ '降为管理员' if u.role == 'super_admin' else '升为超管' }}
+                </button>
+                <button type="button" class="btn btn-danger"
+                        data-action="/admin/users/{{ u.id }}/reset-password"
+                        data-reset="1"
+                        data-confirm="确定要重置用户「{{ u.username }}」的密码吗？将生成一个新的随机密码，旧密码立即失效。">
+                  重置密码
+                </button>
               </div>
               {% else %}
               <span style="font-size:.8rem;color:#9ca3af;">当前用户</span>
@@ -233,6 +270,35 @@
       </table>
     </div>
   </main>
+
+  <!-- Confirmation modal -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal">
+      <h3 id="confirmTitle">请确认</h3>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="confirmCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reset-password result modal -->
+  <div class="modal-overlay" id="pwOverlay">
+    <div class="modal">
+      <h3>新密码已生成</h3>
+      <p id="pwText" style="margin-bottom:.75rem;"></p>
+      <div class="pw-box">
+        <code id="pwValue"></code>
+        <button type="button" class="icon-btn" id="pwCopy" title="复制密码"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+      </div>
+      <p class="pw-hint">请立即复制并妥善转交，关闭后将无法再次查看。</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="pwClose">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
     function copyInviteCode(code, btn) {
@@ -250,6 +316,102 @@
       btn.classList.add("copied");
       setTimeout(() => { btn.innerHTML = original; btn.classList.remove("copied"); }, 1500);
     }
+
+    function copyText(text, btn) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      const original = btn.innerHTML;
+      btn.innerHTML = CHECK_SVG;
+      btn.classList.add("copied");
+      setTimeout(() => { btn.innerHTML = original; btn.classList.remove("copied"); }, 1500);
+    }
+
+    // ── Confirmation + action handling ──────────────────────────────────────
+    const confirmOverlay = document.getElementById("confirmOverlay");
+    const confirmText = document.getElementById("confirmText");
+    const confirmOk = document.getElementById("confirmOk");
+    const confirmCancel = document.getElementById("confirmCancel");
+    let pendingBtn = null;
+
+    function closeConfirm() {
+      confirmOverlay.classList.remove("open");
+      pendingBtn = null;
+    }
+
+    // Every user/invite action button opens the confirm modal first.
+    document.querySelectorAll("button[data-confirm]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        pendingBtn = btn;
+        confirmText.textContent = btn.getAttribute("data-confirm");
+        confirmOverlay.classList.add("open");
+      });
+    });
+
+    confirmCancel.addEventListener("click", closeConfirm);
+    confirmOverlay.addEventListener("click", e => { if (e.target === confirmOverlay) closeConfirm(); });
+
+    confirmOk.addEventListener("click", () => {
+      if (!pendingBtn) return;
+      const btn = pendingBtn;
+      const action = btn.getAttribute("data-action");
+      if (btn.getAttribute("data-reset")) {
+        doResetPassword(action);
+      } else {
+        submitAction(action, btn.getAttribute("data-role"));
+      }
+    });
+
+    // Build and submit a POST form (toggle / role / delete).
+    function submitAction(action, role) {
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = action;
+      if (role) {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "role";
+        input.value = role;
+        form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
+    }
+
+    // ── Reset password (AJAX, shows generated password) ─────────────────────
+    const pwOverlay = document.getElementById("pwOverlay");
+    const pwText = document.getElementById("pwText");
+    const pwValue = document.getElementById("pwValue");
+    const pwCopy = document.getElementById("pwCopy");
+    const pwClose = document.getElementById("pwClose");
+
+    async function doResetPassword(action) {
+      confirmOk.disabled = true;
+      try {
+        const resp = await fetch(action, { method: "POST" });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const data = await resp.json();
+        closeConfirm();
+        pwText.innerHTML = "用户 <strong></strong> 的新密码：";
+        pwText.querySelector("strong").textContent = data.username;
+        pwValue.textContent = data.password;
+        pwOverlay.classList.add("open");
+      } catch (err) {
+        alert("重置密码失败：" + err.message);
+        closeConfirm();
+      } finally {
+        confirmOk.disabled = false;
+      }
+    }
+
+    pwCopy.addEventListener("click", () => copyText(pwValue.textContent, pwCopy));
+    pwClose.addEventListener("click", () => pwOverlay.classList.remove("open"));
+    pwOverlay.addEventListener("click", e => { if (e.target === pwOverlay) pwOverlay.classList.remove("open"); });
   </script>
 </body>
 </html>

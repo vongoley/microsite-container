@@ -904,6 +904,22 @@ async def toggle_user(
     return RedirectResponse(url="/admin/users", status_code=303)
 
 
+@app.post("/admin/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(require_super_admin),
+):
+    target = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Generate a readable random password (url-safe, no ambiguous separators).
+    new_password = secrets.token_urlsafe(9)
+    db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
+    db.commit()
+    return JSONResponse({"username": target["username"], "password": new_password})
+
+
 @app.post("/admin/users/{user_id}/role")
 async def change_role(
     user_id: str,
