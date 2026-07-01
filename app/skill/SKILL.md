@@ -62,8 +62,63 @@ python3 ~/.claude/skills/html-container/scripts/upload.py put \
 
 输出示例：
 ```json
-{"status": "ok", "slug": "my-project/report", "id": "a1b2c3d4", "url": "https://html.orcacalf.site/view/my-project/report"}
+{"status": "ok", "slug": "my-project/report", "id": "a1b2c3d4", "url": "https://html.orcacalf.site/view/my-project/report", "visibility": "public"}
 ```
+
+### 上传时设置访问权限（可选）
+
+默认上传为**公开**（`public`），任何人凭链接可访问。如需限制访问，`put` 支持以下参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--visibility` | 可见性模式，五选一（见下表）。不传则新页面默认 `public` |
+| `--view-password` | `password` 模式下的访问密码，**至少 8 位** |
+| `--users` | `users_specific` 模式下的授权用户，逗号分隔的用户名或 ID（如 `alice,bob`） |
+
+**五种可见性模式：**
+
+| 模式 | 谁能看 |
+|------|--------|
+| `public` | 任何人（默认） |
+| `private` | 仅页面所有者 / 超级管理员 |
+| `password` | 输入正确访问密码的人（配合 `--view-password`） |
+| `users_all` | 所有已登录用户 |
+| `users_specific` | 指定的登录用户（配合 `--users`） |
+
+用法示例：
+```bash
+# 私有（仅自己可见）
+python3 ~/.claude/skills/html-container/scripts/upload.py put \
+    --slug "team/draft" --file draft.html --visibility private
+
+# 密码访问
+python3 ~/.claude/skills/html-container/scripts/upload.py put \
+    --slug "team/report" --file report.html \
+    --visibility password --view-password "MySecret123"
+
+# 所有登录用户可见
+python3 ~/.claude/skills/html-container/scripts/upload.py put \
+    --slug "team/wiki" --file wiki.html --visibility users_all
+
+# 仅指定用户可见（先用 list-users 查用户名）
+python3 ~/.claude/skills/html-container/scripts/upload.py put \
+    --slug "team/plan" --file plan.html \
+    --visibility users_specific --users "alice,bob"
+```
+
+> **⚠️ 重要——重新上传时的权限行为：**
+> 对**已存在**的页面重新上传（同一 slug 覆盖），**不传 `--visibility` 时保持原有权限不变**，绝不会把已加密/受限的页面降级为公开。只有显式传入 `--visibility` 才会更新权限。
+> 因此：想改内容但保留权限 → 只传 `--file`；想同时改权限 → 加上 `--visibility`。
+
+### 查看可用于授权的用户列表
+
+`users_specific` 模式需要知道有哪些用户。先运行：
+
+```bash
+python3 ~/.claude/skills/html-container/scripts/upload.py list-users
+```
+
+输出 JSON 数组，含每个活跃用户的 `id`、`username`、`role`。`--users` 参数可传用户名或 ID。
 
 ### 列出所有页面
 
@@ -71,7 +126,7 @@ python3 ~/.claude/skills/html-container/scripts/upload.py put \
 python3 ~/.claude/skills/html-container/scripts/upload.py list
 ```
 
-输出 JSON 数组，包含所有已上传页面的 id、title、slug、uploaded_at。
+输出 JSON 数组，包含所有已上传页面的 id、title、slug、uploaded_at、visibility。
 
 ### 为已有页面设置/修改 slug
 

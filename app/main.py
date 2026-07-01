@@ -351,6 +351,28 @@ def normalize_visibility(visibility: str, view_password: str):
     return None
 
 
+def apply_visibility_update(db, page_id, visibility, view_password, allowed_user_ids,
+                            actor_id, existing_pw_hash, existing_pw_plain):
+    """Apply an explicit visibility change to an existing page (bumps access_epoch).
+
+    Shared by the admin permission route and the API re-upload path. When staying in
+    password mode with a blank password field, the current password is preserved."""
+    if visibility == "password" and not view_password and existing_pw_hash:
+        pw_hash = existing_pw_hash
+        pw_plain = existing_pw_plain
+    else:
+        pw_hash = normalize_visibility(visibility, view_password)
+        pw_plain = view_password if visibility == "password" else None
+
+    _bump_and_set_visibility(db, page_id, visibility,
+                             pw_hash if visibility == "password" else None,
+                             pw_plain if visibility == "password" else None)
+    if visibility == "users_specific":
+        set_page_permissions(db, page_id, allowed_user_ids, actor_id)
+    else:
+        db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
+
+
 # Simple in-process rate limiter for the unlock endpoint: {(ip, page_id): [monotonic ts]}
 import time as _time
 import threading as _threading
@@ -740,21 +762,9 @@ async def update_page_permission(
         raise HTTPException(403, "无权修改此页面")
 
     # Keep existing password when staying in password mode with a blank field
-    # (must be checked BEFORE normalize_visibility, which would reject a blank one).
-    if visibility == "password" and not view_password and row["view_password_hash"]:
-        pw_hash = row["view_password_hash"]
-        pw_plain = row["view_password_plain"]
-    else:
-        pw_hash = normalize_visibility(visibility, view_password)
-        pw_plain = view_password if visibility == "password" else None
-
-    _bump_and_set_visibility(db, page_id, visibility,
-                             pw_hash if visibility == "password" else None,
-                             pw_plain if visibility == "password" else None)
-    if visibility == "users_specific":
-        set_page_permissions(db, page_id, allowed_user_ids, user["id"])
-    else:
-        db.execute("DELETE FROM page_permissions WHERE page_id = ?", (page_id,))
+    # (apply_visibility_update handles this, along with the permission-row sync).
+    apply_visibility_update(db, page_id, visibility, view_password, allowed_user_ids,
+                            user["id"], row["view_password_hash"], row["view_password_plain"])
     db.commit()
 
     # AJAX callers get JSON so the page can update in place (preserving scroll/filters);
@@ -995,6 +1005,9 @@ async def api_upsert_page(
     slug: str,
     title: str = Form(None),
     file: UploadFile = File(...),
+    visibility: str = Form(None),
+    view_password: str = Form(""),
+    allowed_user_ids: list[str] = Form([]),
     db: sqlite3.Connection = Depends(get_db),
     owner_id: str = Depends(get_api_user),
 ):
@@ -1004,12 +1017,19 @@ async def api_upsert_page(
     if not any((file.filename or "").endswith(ext) for ext in ALLOWED_EXTENSIONS):
         raise HTTPException(status_code=400, detail="仅支持 .html 和 .md 文件")
 
+    # Validate visibility up front when explicitly supplied (fails fast before writing files).
+    if visibility is not None and visibility not in VALID_VISIBILITY:
+        raise HTTPException(status_code=400, detail="无效的可见性设置")
+
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
 
     page_title = title or slug
-    existing = db.execute("SELECT id, file_path, owner_id FROM pages WHERE slug = ?", (slug,)).fetchone()
+    existing = db.execute(
+        "SELECT id, file_path, owner_id, view_password_hash, view_password_plain FROM pages WHERE slug = ?",
+        (slug,),
+    ).fetchone()
 
     if existing:
         # Ownership guard: only the owner (or super_admin) may replace an existing page.
@@ -1023,15 +1043,22 @@ async def api_upsert_page(
         safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", file.filename or "page.html")
         file_path = UPLOADS_DIR / f"{existing['id']}_{safe_name}"
         file_path.write_bytes(content)
-        # Note: visibility/view_password_hash/access_epoch deliberately NOT touched —
-        # an API re-upload never downgrades a gated page.
+        # Visibility is only touched when explicitly supplied; a plain re-upload never
+        # downgrades a gated page (visibility/password/access_epoch left intact).
         db.execute(
             "UPDATE pages SET title=?, original_filename=?, uploaded_at=?, file_path=? WHERE slug=?",
             (page_title, file.filename or "page.html", datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug),
         )
-        db.commit()
         page_id = existing["id"]
+        if visibility is not None:
+            apply_visibility_update(db, page_id, visibility, view_password, allowed_user_ids,
+                                    owner_id, existing["view_password_hash"], existing["view_password_plain"])
+        db.commit()
     else:
+        # New page: default to public when visibility is omitted (matches column default).
+        new_visibility = visibility or "public"
+        pw_hash = normalize_visibility(new_visibility, view_password)
+        pw_plain = view_password if new_visibility == "password" else None
         page_id = str(uuid.uuid4())[:8]
         while db.execute("SELECT 1 FROM pages WHERE id = ?", (page_id,)).fetchone():
             page_id = str(uuid.uuid4())[:8]
@@ -1039,12 +1066,15 @@ async def api_upsert_page(
         file_path = UPLOADS_DIR / f"{page_id}_{safe_name}"
         file_path.write_bytes(content)
         db.execute(
-            "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (page_id, page_title, file.filename or "page.html", datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, owner_id),
+            "INSERT INTO pages (id, title, original_filename, uploaded_at, file_path, slug, owner_id, visibility, view_password_hash, view_password_plain, access_epoch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            (page_id, page_title, file.filename or "page.html", datetime.now(TZ_BEIJING).isoformat(), str(file_path), slug, owner_id, new_visibility, pw_hash, pw_plain),
         )
+        if new_visibility == "users_specific":
+            set_page_permissions(db, page_id, allowed_user_ids, owner_id)
         db.commit()
 
-    return JSONResponse({"slug": slug, "id": page_id, "url": f"/view/{slug}"})
+    eff_vis = db.execute("SELECT visibility FROM pages WHERE id = ?", (page_id,)).fetchone()["visibility"]
+    return JSONResponse({"slug": slug, "id": page_id, "url": f"/view/{slug}", "visibility": eff_vis})
 
 
 @app.get("/api/pages")
@@ -1052,8 +1082,21 @@ async def api_list_pages(
     db: sqlite3.Connection = Depends(get_db),
     owner_id: str = Depends(get_api_user),
 ):
-    rows = db.execute("SELECT id, title, slug, uploaded_at FROM pages WHERE owner_id = ? ORDER BY uploaded_at DESC", (owner_id,)).fetchall()
-    return JSONResponse([{"id": r["id"], "title": r["title"], "slug": r["slug"], "uploaded_at": r["uploaded_at"]} for r in rows])
+    rows = db.execute("SELECT id, title, slug, uploaded_at, visibility FROM pages WHERE owner_id = ? ORDER BY uploaded_at DESC", (owner_id,)).fetchall()
+    return JSONResponse([{"id": r["id"], "title": r["title"], "slug": r["slug"], "uploaded_at": r["uploaded_at"], "visibility": r["visibility"] or "public"} for r in rows])
+
+
+@app.get("/api/users")
+async def api_list_users(
+    db: sqlite3.Connection = Depends(get_db),
+    owner_id: str = Depends(get_api_user),
+):
+    """List active users so a CLI caller can resolve usernames -> IDs for
+    users_specific grants. Restricted to authenticated API-token holders."""
+    rows = db.execute(
+        "SELECT id, username, role FROM users WHERE is_active = 1 ORDER BY username"
+    ).fetchall()
+    return JSONResponse([{"id": r["id"], "username": r["username"], "role": r["role"]} for r in rows])
 
 
 @app.delete("/api/pages/{slug:path}")
