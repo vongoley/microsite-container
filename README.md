@@ -1,14 +1,16 @@
 # HTML Container
 
-轻量级 HTML 页面托管与分享服务。上传 HTML 文件，获取分享链接，支持多用户权限管理和 API 自动化上传。
+轻量级 HTML / Markdown 页面托管与分享服务。上传 `.html` 或 `.md` 文件，获取分享链接，支持多用户权限管理和 API 自动化上传。
 
 ## 功能特性
 
-- **HTML 托管**：上传 .html 文件，生成独立的访问链接
+- **HTML / Markdown 托管**：上传 `.html` 或 `.md` 文件，生成独立的访问链接；Markdown 会在访问时自动渲染并生成目录
 - **Slug 路由**：支持自定义可读 URL（如 `/view/project/report`），同 slug 重复上传自动替换
 - **多管理员**：超级管理员 + 普通管理员角色，邀请制注册
 - **权限隔离**：普通管理员只能管理自己的页面，超管可管理全部
-- **REST API**：程序化上传/替换/删除，适合 CI/CD 或 Claude Code 自动化
+- **访问控制**：支持公开、仅自己、密码、所有登录用户、指定用户五种可见性
+- **REST API**：程序化上传/替换/删除，适合 CI/CD、Codex 或 Claude Code 自动化
+- **Codex Skill 安装**：提供 `/api/install-skill` 安装脚本，默认安装到 Codex，兼容 Claude Code
 - **响应式 UI**：桌面端表格 + 移动端卡片布局，支持拖拽上传
 - **Docker 部署**：一键部署，SQLite 存储无需外部数据库
 
@@ -67,12 +69,13 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## API 接口
 
-所有 API 接口使用 `Authorization: Bearer <API_KEY>` 认证。
+所有 API 接口使用 `Authorization: Bearer <API_KEY>` 认证。既支持环境变量里的全局 `API_KEY`，也支持用户在后台生成的个人 API Token。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `PUT` | `/api/pages/{slug}` | 创建或替换页面（同 slug 自动覆盖） |
 | `GET` | `/api/pages` | 列出所有页面 |
+| `GET` | `/api/users` | 列出活跃用户，用于指定用户授权 |
 | `DELETE` | `/api/pages/{slug}` | 删除页面 |
 
 ### 上传示例
@@ -86,15 +89,54 @@ curl -X PUT https://your-domain.com/api/pages/project/report \
 
 响应：
 ```json
-{"slug": "project/report", "id": "a1b2c3d4", "url": "/view/project/report"}
+{"slug": "project/report", "id": "a1b2c3d4", "url": "/view/project/report", "visibility": "public"}
 ```
+
+### Markdown 上传
+
+`.md` 文件可以直接上传，不需要先转成 HTML：
+
+```bash
+curl -X PUT https://your-domain.com/api/pages/project/readme \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "title=项目说明" \
+  -F "file=@README.md"
+```
+
+访问 `/view/project/readme` 时，服务会用 `marked.js` 渲染 Markdown，并生成左侧目录。
+
+### 访问权限参数
+
+`PUT /api/pages/{slug}` 支持以下可选表单参数：
+
+| 参数 | 说明 |
+|------|------|
+| `visibility` | `public`、`private`、`password`、`users_all`、`users_specific` |
+| `view_password` | `password` 模式下的访问密码，至少 8 位 |
+| `allowed_user_ids` | `users_specific` 模式下允许访问的用户 ID，可重复提交多个 |
+
+同一 slug 重新上传时，如果不传 `visibility`，会保留原页面的访问权限，不会把受限页面降级为公开。
+
+### 安装 Skill
+
+登录后台生成 API Token 后，可以通过安装脚本把上传工具安装到本机 Agent：
+
+```bash
+# 默认安装到 Codex: ~/.codex/skills/html-container
+curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_API_TOKEN" | bash
+
+# 如需安装给 Claude Code: ~/.claude/skills/html-container
+curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_API_TOKEN&target=claude" | bash
+```
+
+安装后的 CLI 配置在 `~/.config/html-container/credentials.env`，脚本路径为 `~/.codex/skills/html-container/scripts/upload.py` 或 `~/.claude/skills/html-container/scripts/upload.py`。
 
 ## 用户权限
 
 | 角色 | 查看页面 | 上传 | 替换/删除 | 管理用户 |
 |------|:---:|:---:|:---:|:---:|
 | super_admin | 全部 | 可以 | 全部 | 可以 |
-| admin | 仅自己 | 可以 | 仅自己 | 不可以 |
+| admin | 自己上传的页面；以及被授权访问的页面 | 可以 | 仅自己 | 不可以 |
 
 ### 添加新用户
 

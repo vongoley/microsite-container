@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOMAIN="html.orcacalf.site"
 INSTALL_DIR="/opt/html-container"
 REPO="https://github.com/vongoley/html-container.git"
+DEFAULT_DOMAIN="csbiwithai.intsig.net"
+
+read -rp "请输入要绑定的域名 [${DEFAULT_DOMAIN}]: " DOMAIN
+DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN}
 
 echo "=============================="
 echo " HTML Container 一键部署脚本"

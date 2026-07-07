@@ -1,25 +1,49 @@
 ---
 name: html-container
 description: |
-  HTML Container 上传工具。将本地 HTML/Markdown 文件上传到服务器进行托管和分享。
+  HTML / Markdown Container 上传工具。将本地 HTML 或 Markdown 文件上传到服务器进行托管和分享。
+  ⚠️ 直接支持 .md 文件：后端会用 marked.js 自动渲染 Markdown 为 HTML（含目录），无需先转成 HTML。
   支持上传新页面、替换已有页面、列出所有页面、删除页面。
-  通过 slug 标识页面，同一 slug 重复上传会自动覆盖旧版本。
-  支持 .html 和 .md 文件，markdown 会自动渲染。
+  通过 slug 标识页面，同一 slug 重复上传会自动替换旧版本。
 
   Triggers when user mentions:
   - "上传HTML", "上传html", "upload html", "发布HTML", "发布html"
-  - "上传markdown", "上传md", "upload markdown"
+  - "上传Markdown", "上传markdown", "上传md", "上传.md", "upload markdown"
   - "html-container", "HTML Container"
   - "分享页面", "分享HTML", "托管HTML", "托管html"
   - "部署到网站", "发布到网站", "推送HTML", "推送文件"
+  - "公司服务器", "csbiwithai"
 ---
+
+> **重要：直接支持 Markdown，切勿先转 HTML。**
+> `--file` 可直接传 `.md` 文件。后端检测到 `.md` 后会用前端 `marked.js` 自动把 Markdown 渲染成 HTML，
+> 套用 `github-markdown-css` 样式并生成左侧 sticky 目录（TOC）。
+> 因此当用户要上传一份 Markdown 文档（如 SKILL.md、README.md、PRD、报告）时，
+> **直接把原始 `.md` 文件 `put` 上去即可，不要自己写脚本把它转成 HTML**——那是多余且会引入失真的。
+> 仅当用户明确要求自定义 HTML 样式、或源文件本就是 HTML 时，才上传 `.html`。
+
+## 公司服务器代理规则
+
+如果用户提到"公司服务器"、"csbiwithai"、"公司"、"内网"，说明目标服务器是 `http://csbiwithai.intsig.net`。
+公司服务器是内网地址，**必须绕过 Clash/HTTP 代理**，否则请求可能走 `127.0.0.1:7890` 后返回 `502 Bad Gateway`。
+
+公司服务器命令前缀：
+```bash
+COMPANY_NO_PROXY="env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy NO_PROXY=csbiwithai.intsig.net,.intsig.net,localhost,127.0.0.1 no_proxy=csbiwithai.intsig.net,.intsig.net,localhost,127.0.0.1"
+```
+
+用法示例：
+```bash
+$COMPANY_NO_PROXY python3 ~/.codex/skills/html-container/scripts/upload.py check
+$COMPANY_NO_PROXY python3 ~/.codex/skills/html-container/scripts/upload.py put --slug "xxx" --file xxx.html
+```
 
 ## 初始化检查
 
 在处理任何上传任务之前，先运行：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py check
+python3 ~/.codex/skills/html-container/scripts/upload.py check
 ```
 
 根据输出的 `status` 字段：
@@ -30,11 +54,12 @@ python3 ~/.claude/skills/html-container/scripts/upload.py check
 ### status = "missing_config"
 凭据未配置。通过 AskUserQuestion 向用户收集：
 - API Key（从服务器 .env 中获取）
+- 服务地址（例如公司内网服务地址）
 
 收到后写入凭据文件：
 ```bash
 mkdir -p ~/.config/html-container
-printf 'API_KEY=%s\nBASE_URL=%s\n' 'KEY_VALUE' 'https://html.orcacalf.site' \
+printf 'API_KEY=%s\nBASE_URL=%s\n' 'KEY_VALUE' 'https://your-domain.com' \
   > ~/.config/html-container/credentials.env
 ```
 
@@ -47,22 +72,22 @@ printf 'API_KEY=%s\nBASE_URL=%s\n' 'KEY_VALUE' 'https://html.orcacalf.site' \
 
 ## 使用方式
 
-### 上传或替换 HTML 文件
+### 上传或替换 HTML / Markdown 文件
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "项目名/页面名" \
     --title "页面标题" \
-    --file path/to/file.html
+    --file path/to/file.html    # 或 path/to/file.md —— 两者皆可
 ```
 
 - `--slug`：页面标识符，支持多级路径（如 `workspace/project/report`）。同一 slug 重复上传会自动替换旧版本。
 - `--title`：页面标题，用于管理后台列表展示。可选，默认使用 slug。
-- `--file`：要上传的 HTML 文件路径。
+- `--file`：要上传的文件路径。**支持 `.html` 和 `.md`**：传 `.md` 时后端自动渲染为带目录的 HTML 页面，无需手动转换。
 
 输出示例：
 ```json
-{"status": "ok", "slug": "my-project/report", "id": "a1b2c3d4", "url": "https://html.orcacalf.site/view/my-project/report", "visibility": "public"}
+{"status": "ok", "slug": "my-project/report", "id": "a1b2c3d4", "url": "https://your-domain.com/view/my-project/report", "visibility": "public"}
 ```
 
 ### 上传时设置访问权限（可选）
@@ -88,25 +113,25 @@ python3 ~/.claude/skills/html-container/scripts/upload.py put \
 用法示例：
 ```bash
 # 私有（仅自己可见）
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "team/draft" --file draft.html --visibility private
 
 # 密码访问
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "team/report" --file report.html \
     --visibility password --view-password "MySecret123"
 
 # 所有登录用户可见
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "team/wiki" --file wiki.html --visibility users_all
 
 # 仅指定用户可见（先用 list-users 查用户名）
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "team/plan" --file plan.html \
     --visibility users_specific --users "alice,bob"
 ```
 
-> **⚠️ 重要——重新上传时的权限行为：**
+> **重要——重新上传时的权限行为：**
 > 对**已存在**的页面重新上传（同一 slug 覆盖），**不传 `--visibility` 时保持原有权限不变**，绝不会把已加密/受限的页面降级为公开。只有显式传入 `--visibility` 才会更新权限。
 > 因此：想改内容但保留权限 → 只传 `--file`；想同时改权限 → 加上 `--visibility`。
 
@@ -115,7 +140,7 @@ python3 ~/.claude/skills/html-container/scripts/upload.py put \
 `users_specific` 模式需要知道有哪些用户。先运行：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py list-users
+python3 ~/.codex/skills/html-container/scripts/upload.py list-users
 ```
 
 输出 JSON 数组，含每个活跃用户的 `id`、`username`、`role`。`--users` 参数可传用户名或 ID。
@@ -123,7 +148,7 @@ python3 ~/.claude/skills/html-container/scripts/upload.py list-users
 ### 列出所有页面
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py list
+python3 ~/.codex/skills/html-container/scripts/upload.py list
 ```
 
 输出 JSON 数组，包含所有已上传页面的 id、title、slug、uploaded_at、visibility。
@@ -133,7 +158,7 @@ python3 ~/.claude/skills/html-container/scripts/upload.py list
 对于历史上传时未指定 slug 的页面，或需要更改 slug 的页面：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py set-slug \
+python3 ~/.codex/skills/html-container/scripts/upload.py set-slug \
     --id "页面ID或当前slug" \
     --new-slug "新的slug" \
     --title "可选：更新标题"
@@ -149,7 +174,7 @@ python3 ~/.claude/skills/html-container/scripts/upload.py set-slug \
 ### 删除页面
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py delete --slug "项目名/页面名"
+python3 ~/.codex/skills/html-container/scripts/upload.py delete --slug "项目名/页面名"
 ```
 
 ---
@@ -172,7 +197,7 @@ Slug 仅允许：字母、数字、连字符、下划线、点、斜杠。
 用户让你生成一个 HTML 分析报告，完成后直接上传：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "bi-workspace/user-analysis" \
     --title "用户分析报告" \
     --file ./output/report.html
@@ -183,16 +208,29 @@ python3 ~/.claude/skills/html-container/scripts/upload.py put \
 用户多次修改同一个 HTML 文件，每次修改后用同一个 slug 上传即可自动覆盖：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py put \
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
     --slug "project/dashboard" \
     --title "Dashboard v2" \
     --file ./dashboard.html
 ```
 
-### 场景 3：查看当前已发布的页面
+### 场景 3：直接发布 Markdown 文档（无需转 HTML）
+
+用户让你把一份 `.md` 文档（SKILL.md / README / PRD / 报告）托管出来时，**直接上传原始 `.md`**：
 
 ```bash
-python3 ~/.claude/skills/html-container/scripts/upload.py list
+python3 ~/.codex/skills/html-container/scripts/upload.py put \
+    --slug "team/event-design-skill" \
+    --title "event-design Skill 文档" \
+    --file .codex/skills/event-design/SKILL.md
+```
+
+后端会自动用 marked.js 渲染成带左侧目录的 HTML 页面。**不要**先用脚本/Pandoc 把 Markdown 转成 HTML 再传。
+
+### 场景 4：查看当前已发布的页面
+
+```bash
+python3 ~/.codex/skills/html-container/scripts/upload.py list
 ```
 
 ---
@@ -202,6 +240,6 @@ python3 ~/.claude/skills/html-container/scripts/upload.py list
 | Key | 说明 |
 |-----|------|
 | `API_KEY` | HTML Container API Key |
-| `BASE_URL` | 服务地址，默认 `https://html.orcacalf.site` |
+| `BASE_URL` | 服务地址，例如 `https://your-domain.com` 或公司内网服务地址 |
 
 凭据文件路径：`~/.config/html-container/credentials.env`

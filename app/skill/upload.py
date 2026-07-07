@@ -26,16 +26,25 @@ def load_config():
     return config
 
 
+def get_base_url(config):
+    base_url = config.get("BASE_URL", "").strip()
+    if not base_url:
+        raise ValueError("BASE_URL is required in credentials.env")
+    return base_url.rstrip("/")
+
+
 def api_request(method, path, config, data=None, content_type=None):
-    base_url = config.get("BASE_URL", "https://html.orcacalf.site").rstrip("/")
-    url = f"{base_url}{path}"
-    req = Request(url, method=method)
-    req.add_header("Authorization", f"Bearer {config['API_KEY']}")
-    if content_type:
-        req.add_header("Content-Type", content_type)
     try:
+        base_url = get_base_url(config)
+        url = f"{base_url}{path}"
+        req = Request(url, method=method)
+        req.add_header("Authorization", f"Bearer {config['API_KEY']}")
+        if content_type:
+            req.add_header("Content-Type", content_type)
         resp = urlopen(req, data=data, timeout=30)
         return json.loads(resp.read().decode())
+    except ValueError as e:
+        return {"error": str(e)}
     except HTTPError as e:
         body = e.read().decode()
         try:
@@ -70,7 +79,7 @@ def build_multipart(fields, files):
 
 def cmd_check():
     config = load_config()
-    if not config or "API_KEY" not in config:
+    if not config or "API_KEY" not in config or "BASE_URL" not in config:
         print(json.dumps({"status": "missing_config", "message": "Credentials not configured"}))
         return
 
@@ -204,7 +213,11 @@ def cmd_put(args):
     body, content_type = build_multipart(fields, files)
 
     encoded_slug = quote(slug, safe="/")
-    base_url = config.get("BASE_URL", "https://html.orcacalf.site").rstrip("/")
+    try:
+        base_url = get_base_url(config)
+    except ValueError as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        sys.exit(1)
     url = f"{base_url}/api/pages/{encoded_slug}"
 
     req = Request(url, method="PUT", data=body)
@@ -241,7 +254,11 @@ def cmd_list():
         print(json.dumps({"status": "error", "message": result["error"]}))
         sys.exit(1)
 
-    base_url = config.get("BASE_URL", "https://html.orcacalf.site").rstrip("/")
+    try:
+        base_url = get_base_url(config)
+    except ValueError as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        sys.exit(1)
     for item in result:
         item["url"] = f"{base_url}/view/{item.get('slug') or item['id']}"
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -279,7 +296,11 @@ def cmd_set_slug(args):
         print(json.dumps({"status": "error", "message": "--new-slug is required"}))
         sys.exit(1)
 
-    base_url = config.get("BASE_URL", "https://html.orcacalf.site").rstrip("/")
+    try:
+        base_url = get_base_url(config)
+    except ValueError as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        sys.exit(1)
     download_url = f"{base_url}/view/{quote(page_id, safe='/')}"
     try:
         req = Request(download_url)

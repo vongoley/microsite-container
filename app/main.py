@@ -1126,12 +1126,17 @@ async def api_delete_page(
 SKILL_DIR = BASE_DIR / "skill"
 
 @app.get("/api/install-skill")
-async def install_skill(request: Request, token: str = "", os: str = "unix"):
+async def install_skill(request: Request, token: str = "", os: str = "unix", target: str = "codex"):
     if not token:
         raise HTTPException(status_code=400, detail="Missing token parameter")
+    target = (target or "codex").lower()
+    if target not in ("codex", "claude"):
+        raise HTTPException(status_code=400, detail="target must be codex or claude")
     base_url = str(request.base_url).rstrip("/")
     skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     upload_py = (SKILL_DIR / "upload.py").read_text(encoding="utf-8")
+    skill_root = ".codex" if target == "codex" else ".claude"
+    agent_name = "Codex" if target == "codex" else "Claude Code"
 
     if os == "win":
         # PowerShell script for Windows
@@ -1139,11 +1144,11 @@ async def install_skill(request: Request, token: str = "", os: str = "unix"):
         upload_py_escaped = upload_py.replace("'", "''")
         script = f"""$ErrorActionPreference = "Stop"
 
-$SkillDir = "$env:USERPROFILE\\.claude\\skills\\html-container"
+$SkillDir = "$env:USERPROFILE\\{skill_root}\\skills\\html-container"
 $ScriptsDir = "$SkillDir\\scripts"
 $ConfigDir = "$env:USERPROFILE\\.config\\html-container"
 
-Write-Host "Installing HTML Container skill..."
+Write-Host "Installing HTML Container skill for {agent_name}..."
 
 New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
@@ -1167,17 +1172,17 @@ Write-Host "   Skill: $SkillDir"
 Write-Host "   Config: $ConfigDir\\credentials.env"
 Write-Host "   Server: {base_url}"
 Write-Host ""
-Write-Host "Claude Code can now upload HTML/Markdown files from any workspace."
+Write-Host "{agent_name} can now upload HTML/Markdown files from any workspace."
 """
     else:
         script = f"""#!/usr/bin/env bash
 set -e
 
-SKILL_DIR="$HOME/.claude/skills/html-container"
+SKILL_DIR="$HOME/{skill_root}/skills/html-container"
 SCRIPTS_DIR="$SKILL_DIR/scripts"
 CONFIG_DIR="$HOME/.config/html-container"
 
-echo "Installing HTML Container skill..."
+echo "Installing HTML Container skill for {agent_name}..."
 
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$CONFIG_DIR"
@@ -1203,7 +1208,7 @@ echo "   Skill: $SKILL_DIR"
 echo "   Config: $CONFIG_DIR/credentials.env"
 echo "   Server: {base_url}"
 echo ""
-echo "Claude Code can now upload HTML/Markdown files from any workspace."
+echo "{agent_name} can now upload HTML/Markdown files from any workspace."
 """
     return Response(content=script, media_type="text/plain")
 
