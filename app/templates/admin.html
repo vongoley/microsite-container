@@ -104,7 +104,7 @@
 
     /* Table (desktop) */
     .table-wrap { width: 100%; overflow-x: auto; border-radius: 8px; }
-    table { width: 100%; min-width: 1040px; table-layout: fixed; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    table { width: 100%; min-width: 1120px; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
     th {
       text-align: left;
       font-size: .8rem;
@@ -128,21 +128,45 @@
       padding: .1rem .45rem;
       border-radius: 4px;
     }
-    .link-cell { display: flex; align-items: center; gap: .5rem; }
-    .id-col { width: 170px; }
-    .slug-col { width: 270px; }
+    .link-cell { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+    .title-col, .owner-col { overflow: hidden; }
+    .title-text {
+      display: -webkit-box;
+      max-height: 2.9em;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .id-col { width: 165px; }
+    .slug-col { width: 250px; }
     .visibility-col { width: 110px; }
-    .owner-col { width: 100px; }
+    .owner-col { width: 140px; }
     .uploaded-col { width: 155px; }
-    .actions-col { width: 105px; }
-    .slug-link-cell { min-width: 0; }
-    .slug-link {
+    .actions-col { width: 140px; }
+    .id-link, .slug-link {
       flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .owner-text {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    th.actions-col, td.actions-col {
+      position: sticky;
+      right: 0;
+      box-shadow: -1px 0 0 #e5e7eb;
+    }
+    th.actions-col { z-index: 3; background: #f9fafb; }
+    td.actions-col { z-index: 2; background: #fff; }
+    tr:hover td.actions-col { background: #fafafa; }
     .copy-btn {
       display: inline-flex; align-items: center; justify-content: center;
       width: 20px; height: 20px; padding: 0;
@@ -233,7 +257,8 @@
       border-radius: 4px; background: #fff; cursor: pointer; color: #374151; white-space: nowrap;
     }
     .btn-perm:hover { background: #f3f4f6; }
-    .ops-cell { display: flex; gap: .4rem; align-items: center; }
+    .ops-cell { display: flex; gap: .4rem; align-items: center; flex-wrap: nowrap; }
+    .ops-cell > * { flex: 0 0 auto; }
 
     /* Upload visibility controls */
     .vis-control { padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .9rem; width: 100%; outline: none; }
@@ -344,8 +369,22 @@
       justify-content: space-between;
       align-items: center;
     }
+    .page-card-title > span {
+      min-width: 0;
+      padding-right: .5rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .page-card-title .delete-form { flex-shrink: 0; }
     .page-card-links { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
-    .page-card-links .link-cell a { font-size: .8rem; word-break: break-all; }
+    .page-card-links .link-cell a {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: .8rem;
+    }
     .page-card-meta {
       display: flex;
       justify-content: space-between;
@@ -353,6 +392,16 @@
     }
 
     /* Responsive */
+    @media (max-width: 1151px) {
+      .table-wrap { display: none; }
+      .card-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .75rem;
+      }
+      .page-card { margin-bottom: 0; }
+    }
+
     @media (max-width: 768px) {
       main { padding: 0 .5rem; margin: 1rem auto; }
       .upload-card { padding: 1rem; }
@@ -361,8 +410,7 @@
       .drop-zone { min-height: 120px; padding: 1.5rem .75rem; }
       .btn-upload { width: 100%; padding: .75rem; }
 
-      table { display: none; }
-      .card-list { display: block; }
+      .card-list { grid-template-columns: minmax(0, 1fr); }
     }
   </style>
 </head>
@@ -454,16 +502,16 @@
             data-slug="{{ (p.slug or '')|lower }}"
             data-owner="{{ p.owner_name or '' }}"
             data-date="{{ p.uploaded_at[:10] }}">
-          <td>{{ p.title }}</td>
+          <td class="title-col"><span class="title-text" title="{{ p.title }}">{{ p.title }}</span></td>
           <td>
             <div class="link-cell">
-              <a href="/view/{{ p.id }}" target="_blank" style="font-size:.85rem;color:#4f46e5;">/view/{{ p.id }}</a>
+              <a class="id-link" href="/view/{{ p.id }}" target="_blank" title="/view/{{ p.id }}" style="font-size:.85rem;color:#4f46e5;">/view/{{ p.id }}</a>
               <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
             </div>
           </td>
           <td class="slug-col">
             {% if p.slug %}
-            <div class="link-cell slug-link-cell">
+            <div class="link-cell">
               <a class="slug-link" href="/view/{{ p.slug }}" target="_blank" title="/view/{{ p.slug }}" style="font-size:.85rem;color:#6d28d9;">/view/{{ p.slug }}</a>
               <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
             </div>
@@ -479,9 +527,9 @@
               {% endif %}
             </div>
           </td>
-          {% if user.role == 'super_admin' %}<td style="font-size:.8rem;color:#6b7280;">{{ p.owner_name or '—' }}</td>{% endif %}
+          {% if user.role == 'super_admin' %}<td class="owner-col" style="font-size:.8rem;color:#6b7280;"><span class="owner-text" title="{{ p.owner_name or '—' }}">{{ p.owner_name or '—' }}</span></td>{% endif %}
           <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
-          <td>
+          <td class="actions-col">
             <div class="ops-cell">
               <button type="button" class="btn-perm" data-perm-btn="{{ p.id }}" data-title="{{ p.title }}"
                       onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
@@ -512,12 +560,12 @@
         </div>
         <div class="page-card-links">
           <div class="link-cell">
-            <a href="/view/{{ p.id }}" target="_blank" style="color:#4f46e5;">/view/{{ p.id }}</a>
+            <a href="/view/{{ p.id }}" target="_blank" title="/view/{{ p.id }}" style="color:#4f46e5;">/view/{{ p.id }}</a>
             <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
           </div>
           {% if p.slug %}
           <div class="link-cell">
-            <a href="/view/{{ p.slug }}" target="_blank" style="color:#6d28d9;">/view/{{ p.slug }}</a>
+            <a href="/view/{{ p.slug }}" target="_blank" title="/view/{{ p.slug }}" style="color:#6d28d9;">/view/{{ p.slug }}</a>
             <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
           </div>
           {% endif %}
