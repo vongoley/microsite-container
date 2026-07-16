@@ -103,7 +103,8 @@
     .btn-upload:hover { background: #4338ca; }
 
     /* Table (desktop) */
-    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .table-wrap { width: 100%; overflow-x: auto; border-radius: 8px; }
+    table { width: 100%; min-width: 1040px; table-layout: fixed; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
     th {
       text-align: left;
       font-size: .8rem;
@@ -128,6 +129,20 @@
       border-radius: 4px;
     }
     .link-cell { display: flex; align-items: center; gap: .5rem; }
+    .id-col { width: 170px; }
+    .slug-col { width: 270px; }
+    .visibility-col { width: 110px; }
+    .owner-col { width: 100px; }
+    .uploaded-col { width: 155px; }
+    .actions-col { width: 105px; }
+    .slug-link-cell { min-width: 0; }
+    .slug-link {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .copy-btn {
       display: inline-flex; align-items: center; justify-content: center;
       width: 20px; height: 20px; padding: 0;
@@ -419,16 +434,17 @@
     </div>
 
     <!-- Desktop: table -->
+    <div class="table-wrap">
     <table id="pages-table">
       <thead>
         <tr>
           <th>标题</th>
-          <th>ID 链接</th>
-          <th>Slug 链接</th>
-          <th>可见性</th>
-          {% if user.role == 'super_admin' %}<th>所有者</th>{% endif %}
-          <th>上传时间</th>
-          <th>操作</th>
+          <th class="id-col">ID 链接</th>
+          <th class="slug-col">Slug 链接</th>
+          <th class="visibility-col">可见性</th>
+          {% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}
+          <th class="uploaded-col">上传时间</th>
+          <th class="actions-col">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -445,10 +461,10 @@
               <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
             </div>
           </td>
-          <td>
+          <td class="slug-col">
             {% if p.slug %}
-            <div class="link-cell">
-              <a href="/view/{{ p.slug }}" target="_blank" style="font-size:.85rem;color:#6d28d9;word-break:break-all;">/view/{{ p.slug }}</a>
+            <div class="link-cell slug-link-cell">
+              <a class="slug-link" href="/view/{{ p.slug }}" target="_blank" title="/view/{{ p.slug }}" style="font-size:.85rem;color:#6d28d9;">/view/{{ p.slug }}</a>
               <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
             </div>
             {% else %}
@@ -478,6 +494,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
 
     <!-- Mobile: card list -->
     <div class="card-list">
