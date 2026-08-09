@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Response, UploadFile, File, Form, HTTPException, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
@@ -793,6 +793,35 @@ async def get_page_password(
     if row["visibility"] != "password":
         return JSONResponse({"password": None})
     return JSONResponse({"password": row["view_password_plain"]})
+
+
+@app.get("/admin/download/{page_id}")
+async def download_page(
+    page_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Download the original source file. Owner/super_admin only."""
+    row = db.execute(
+        "SELECT original_filename, file_path, owner_id FROM pages WHERE id = ?",
+        (page_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+    if user["role"] != "super_admin" and row["owner_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="无权下载此页面")
+
+    file_path = Path(row["file_path"])
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+
+    filename = Path(row["original_filename"] or file_path.name).name
+    resp = FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/octet-stream",
+    )
+    return _no_store(resp)
 
 
 @app.post("/admin/delete/{page_id}")
