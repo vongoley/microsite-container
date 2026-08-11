@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>无权访问 — {{ title }}</title>
+  <style>
+    [data-theme="light"] {
+      --bg: #f5f5f7; --surface: #ffffff; --text: #1f2937; --muted: #6b7280;
+      --border: #e5e7eb; --accent: #4f46e5; --accent-hover: #4338ca;
+      --on-accent: #ffffff;
+      --icon-bg: #fff7ed; --icon-text: #c2410c; --shadow: rgba(0, 0, 0, .1);
+    }
+    [data-theme="dark"] {
+      --bg: #17172a; --surface: #24243d; --text: #f3f4f6; --muted: #b4b7c5;
+      --border: #454560; --accent: #7c74ff; --accent-hover: #6c63ff;
+      --on-accent: #ffffff;
+      --icon-bg: #442a1e; --icon-text: #fdba74; --shadow: rgba(0, 0, 0, .32);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(.9rem, .85rem + .25vw, 1rem);
+    }
+    .card {
+      width: 100%;
+      max-width: 460px;
+      padding: 28px 20px;
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px var(--shadow);
+    }
+    .icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1.25rem;
+      border-radius: 50%;
+      background: var(--icon-bg);
+      color: var(--icon-text);
+      font-size: 2rem;
+    }
+    h1 { font-size: clamp(1.3rem, 1.1rem + 1vw, 1.6rem); margin-bottom: .75rem; }
+    .document-title {
+      margin-bottom: 1rem;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .message { line-height: 1.7; margin-bottom: 1.5rem; }
+    .owner { color: var(--text); font-weight: 600; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 44px;
+      padding: .75rem 1rem;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--on-accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .button:hover { background: var(--accent-hover); }
+    .theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1.15rem;
+      cursor: pointer;
+    }
+    @media (min-width: 768px) {
+      body { padding: 24px; }
+      .card { padding: 36px 32px; }
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" type="button" id="theme-btn" onclick="toggleTheme()" aria-label="切换明暗主题">🌙</button>
+  <main class="card">
+    <div class="icon" aria-hidden="true">🔐</div>
+    <h1>暂无访问权限</h1>
+    <p class="document-title">{{ title }}</p>
+    <p class="message">
+      当前账号没有该文档的访问权限。请联系
+      {% if owner_name %}<span class="owner">{{ owner_name }}</span>{% else %}文档所有者{% endif %}
+      申请授权后再试。
+    </p>
+    <a class="button" href="/admin">返回文档列表</a>
+  </main>
+  <script>
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById('theme-btn').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+    const savedTheme = localStorage.getItem('theme');
+    applyTheme(savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
+</body>
+</html>

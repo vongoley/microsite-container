@@ -1,44 +1,64 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>管理员登录</title>
   <style>
+    [data-theme="light"] {
+      --bg: #f5f5f7; --surface: #ffffff; --text: #222222; --muted: #555555;
+      --border: #d1d5db; --accent: #4f46e5; --accent-hover: #4338ca;
+      --on-accent: #ffffff; --success: #059669; --success-hover: #047857;
+      --error-bg: #fef2f2; --error-border: #fca5a5; --error-text: #b91c1c;
+      --shadow: rgba(0, 0, 0, .1);
+    }
+    [data-theme="dark"] {
+      --bg: #17172a; --surface: #24243d; --text: #f3f4f6; --muted: #c4c6d0;
+      --border: #454560; --accent: #7c74ff; --accent-hover: #6c63ff;
+      --on-accent: #ffffff; --success: #10b981; --success-hover: #059669;
+      --error-bg: #3a1a24; --error-border: #7f3545; --error-text: #ffb4c0;
+      --shadow: rgba(0, 0, 0, .32);
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #f5f5f5;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     .card {
-      background: #fff;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 8px;
-      box-shadow: 0 2px 12px rgba(0,0,0,.1);
-      padding: 2.5rem 2rem;
+      box-shadow: 0 2px 12px var(--shadow);
+      padding: 2rem 1.25rem;
       width: 100%;
       max-width: 360px;
     }
-    h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 1.5rem; text-align: center; color: #222; }
-    label { display: block; font-size: .875rem; color: #555; margin-bottom: .25rem; }
+    h1 { font-size: clamp(1.25rem, 1.1rem + 1vw, 1.4rem); font-weight: 600; margin-bottom: 1.5rem; text-align: center; color: var(--text); }
+    label { display: block; font-size: .875rem; color: var(--muted); margin-bottom: .25rem; }
     input {
       width: 100%;
+      min-height: 44px;
       padding: .625rem .75rem;
-      border: 1px solid #d1d5db;
+      border: 1px solid var(--border);
       border-radius: 6px;
       font-size: .9375rem;
       outline: none;
+      color: var(--text);
+      background: var(--bg);
       transition: border-color .15s;
     }
-    input:focus { border-color: #4f46e5; }
+    input:focus { border-color: var(--accent); }
     .field { margin-bottom: 1rem; }
     .error {
-      background: #fef2f2;
-      border: 1px solid #fca5a5;
-      color: #b91c1c;
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
       border-radius: 6px;
       padding: .5rem .75rem;
       font-size: .875rem;
@@ -46,9 +66,10 @@
     }
     button {
       width: 100%;
+      min-height: 44px;
       padding: .7rem;
-      background: #4f46e5;
-      color: #fff;
+      background: var(--accent);
+      color: var(--on-accent);
       border: none;
       border-radius: 6px;
       font-size: .9375rem;
@@ -56,16 +77,36 @@
       cursor: pointer;
       transition: background .15s;
     }
-    button:hover { background: #4338ca; }
+    button:hover { background: var(--accent-hover); }
+    a { color: var(--accent) !important; }
+    .theme-toggle {
+      position: fixed; top: 16px; right: 16px; z-index: 10;
+      width: 44px; min-width: 44px; height: 44px; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-radius: 50%;
+      background: var(--surface); color: var(--text); font-size: 1.15rem;
+    }
+    .theme-toggle:hover { background: var(--bg); }
+    .invite-link { text-align: center; margin-top: 1rem; font-size: .85rem; }
+    .invite-link a { text-decoration: none; }
+    .invite-section { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .invite-button { background: var(--success); }
+    .invite-button:hover { background: var(--success-hover); }
+    @media (min-width: 768px) {
+      body { padding: 24px; }
+      .card { padding: 2.5rem 2rem; }
+    }
   </style>
 </head>
 <body>
+  <button class="theme-toggle" type="button" id="theme-btn" onclick="toggleTheme()" aria-label="切换明暗主题">🌙</button>
   <div class="card">
     <h1>HTML Container</h1>
     {% if error %}
     <div class="error">{{ error }}</div>
     {% endif %}
     <form method="post" action="/admin/login">
+      <input type="hidden" name="redirect_to" value="{{ redirect_to }}">
       <div class="field">
         <label for="username">用户名</label>
         <input id="username" name="username" type="text" autocomplete="username" required>
@@ -76,18 +117,31 @@
       </div>
       <button type="submit">登录</button>
     </form>
-    <p style="text-align:center;margin-top:1rem;font-size:.85rem;">
-      <a href="#" onclick="document.getElementById('invite-section').style.display='block';this.parentElement.style.display='none';" style="color:#4f46e5;text-decoration:none;">使用邀请码注册</a>
+    <p class="invite-link">
+      <a href="#" onclick="document.getElementById('invite-section').style.display='block';this.parentElement.style.display='none';">使用邀请码注册</a>
     </p>
-    <div id="invite-section" style="display:none;margin-top:1rem;padding-top:1rem;border-top:1px solid #e5e7eb;">
+    <div class="invite-section" id="invite-section">
       <form method="get" action="/admin/register/code" onsubmit="this.action='/admin/register/'+document.getElementById('invite-code').value;return true;">
         <div class="field">
           <label for="invite-code">邀请码</label>
           <input id="invite-code" type="text" placeholder="粘贴邀请码" required>
         </div>
-        <button type="submit" style="background:#059669;">前往注册</button>
+        <button class="invite-button" type="submit">前往注册</button>
       </form>
     </div>
   </div>
+  <script>
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.getElementById('theme-btn').textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    function toggleTheme() {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', next);
+      applyTheme(next);
+    }
+    const savedTheme = localStorage.getItem('theme');
+    applyTheme(savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  </script>
 </body>
 </html>

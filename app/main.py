@@ -13,6 +13,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
+from urllib.parse import quote, urlsplit, urlunsplit
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "html_store.db"
@@ -321,6 +322,29 @@ def _no_store(resp: Response) -> Response:
     return resp
 
 
+def _safe_login_next(value) -> str:
+    """Allow login redirects only back to a local shared-document URL."""
+    if not value:
+        return "/admin"
+    try:
+        parsed = urlsplit(value.strip())
+        if parsed.scheme or parsed.netloc or not parsed.path.startswith("/view/"):
+            return "/admin"
+        return urlunsplit(("", "", parsed.path, parsed.query, ""))
+    except Exception:
+        return "/admin"
+
+
+def _login_redirect(request: Request) -> RedirectResponse:
+    next_path = request.url.path
+    if request.url.query:
+        next_path += f"?{request.url.query}"
+    return RedirectResponse(
+        url=f"/admin/login?next={quote(next_path, safe='')}",
+        status_code=303,
+    )
+
+
 def _bump_and_set_visibility(db, page_id, visibility, view_password_hash, view_password_plain):
     db.execute(
         "UPDATE pages SET visibility=?, view_password_hash=?, view_password_plain=?, access_epoch=access_epoch+1 WHERE id=?",
@@ -542,9 +566,13 @@ async def view_page(page_id: str, request: Request, db: sqlite3.Connection = Dep
     user = resolve_optional_user(request, db)
     decision = can_view(page, user, request, db)
 
-    # DENY is indistinguishable from genuinely-not-found (no existence/mode leak).
     if decision == "deny":
-        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+        if user is None:
+            return _no_store(_login_redirect(request))
+        return _no_store(RedirectResponse(
+            url=f"/access-denied/{page['id']}",
+            status_code=303,
+        ))
 
     if decision == "password":
         resp = templates.TemplateResponse(
@@ -570,6 +598,44 @@ async def view_page(page_id: str, request: Request, db: sqlite3.Connection = Dep
     if (page.get("visibility") or "public") != "public":
         _no_store(resp)
     return resp
+
+
+@app.get("/access-denied/{page_id}", response_class=HTMLResponse)
+async def access_denied_page(
+    page_id: str,
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),
+):
+    """Explain a real permission denial without treating it as a missing page."""
+    page = _resolve_page(db, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_DETAIL)
+
+    user = resolve_optional_user(request, db)
+    if user is None:
+        return _no_store(RedirectResponse(
+            url=f"/admin/login?next={quote(f'/view/{page_id}', safe='')}",
+            status_code=303,
+        ))
+
+    # Permissions can change between the original redirect and this request.
+    if can_view(page, user, request, db) != "deny":
+        return _no_store(RedirectResponse(url=f"/view/{page['id']}", status_code=303))
+
+    owner = db.execute(
+        "SELECT username FROM users WHERE id = ?",
+        (page.get("owner_id"),),
+    ).fetchone()
+    resp = templates.TemplateResponse(
+        request,
+        "access_denied.html",
+        {
+            "title": page["title"],
+            "owner_name": owner["username"] if owner else None,
+        },
+        status_code=403,
+    )
+    return _no_store(resp)
 
 
 @app.post("/unlock/{page_id:path}")
@@ -619,8 +685,12 @@ async def unlock_page(
 # ── Admin: login ──────────────────────────────────────────────────────────────
 
 @app.get("/admin/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+async def login_page(request: Request, next: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"error": None, "redirect_to": _safe_login_next(next)},
+    )
 
 
 @app.post("/admin/login")
@@ -628,15 +698,22 @@ async def login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    redirect_to: str = Form(""),
     db: sqlite3.Connection = Depends(get_db),
 ):
+    safe_redirect = _safe_login_next(redirect_to)
     user = db.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,)).fetchone()
     if user and hmac.compare_digest(hash_password(password), user["password_hash"]):
         token = make_session_token(user["id"], user["username"])
-        resp = RedirectResponse(url="/admin", status_code=303)
+        resp = RedirectResponse(url=safe_redirect, status_code=303)
         resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=SESSION_TTL_HOURS * 3600)
         return resp
-    return templates.TemplateResponse(request, "login.html", {"error": "用户名或密码错误"}, status_code=401)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"error": "用户名或密码错误", "redirect_to": safe_redirect},
+        status_code=401,
+    )
 
 
 @app.get("/admin/logout")
