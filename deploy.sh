@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INSTALL_DIR="/opt/html-container"
-REPO="https://github.com/vongoley/html-container.git"
+INSTALL_DIR="/opt/microsite-container"
+REPO="https://github.com/vongoley/microsite-container.git"
 DEFAULT_DOMAIN="csbiwithai.intsig.net"
 
 read -rp "请输入要绑定的域名 [${DEFAULT_DOMAIN}]: " DOMAIN
 DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN}
 
 echo "=============================="
-echo " HTML Container 一键部署脚本"
+echo " Microsite Container 一键部署脚本"
 echo " 域名: $DOMAIN"
 echo "=============================="
 
@@ -57,11 +57,14 @@ else
 
     PASS_HASH=$(python3 -c "import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest())" "$ADMIN_PASS")
     SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    API_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 
     cat > .env <<ENVEOF
 ADMIN_USERNAME=${ADMIN_USER}
 ADMIN_PASSWORD_HASH=${PASS_HASH}
 SESSION_SECRET=${SESSION_SECRET}
+API_KEY=${API_KEY}
+MICROSITE_ACCEL_PREFIX=/_protected_microsite_blobs
 ENVEOF
 
     echo "  .env 已生成"
@@ -86,15 +89,22 @@ fi
 echo ""
 echo "[5/6] 配置 Nginx 反向代理 ..."
 
-cat > /etc/nginx/sites-available/html-container <<NGINXEOF
+cat > /etc/nginx/sites-available/microsite-container <<NGINXEOF
 server {
     listen 80;
     server_name ${DOMAIN};
 
-    client_max_body_size 20M;
+    client_max_body_size 0;
+
+    location /_protected_microsite_blobs/ {
+        internal;
+        alias ${INSTALL_DIR}/data/microsites/blobs/;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8080;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -103,7 +113,7 @@ server {
 }
 NGINXEOF
 
-ln -sf /etc/nginx/sites-available/html-container /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/microsite-container /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 nginx -t && systemctl reload nginx
@@ -131,7 +141,7 @@ echo "=============================="
 echo " 部署完成!"
 echo ""
 echo " 管理后台: https://${DOMAIN}/admin"
-echo " 分享链接: https://${DOMAIN}/view/<page_id>"
+echo " 站点地址: https://${DOMAIN}/sites/<site-slug>/"
 echo ""
 echo " 常用命令:"
 echo "   查看日志:  cd $INSTALL_DIR && docker compose logs -f"

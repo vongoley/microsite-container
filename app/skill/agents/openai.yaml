@@ -1,0 +1,4 @@
+interface:
+  display_name: "Microsite Container"
+  short_description: "Deploy multi-file static sites with incremental asset sync"
+  default_prompt: "Use $microsite-container to deploy this static site directory with an immutable incremental release."

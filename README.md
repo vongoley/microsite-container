@@ -1,28 +1,49 @@
-# HTML Container
+# Microsite Container
 
-轻量级 HTML / Markdown 页面托管与分享服务。上传 `.html` 或 `.md` 文件，获取分享链接，支持多用户权限管理和 API 自动化上传。
+面向多文件静态网站、SPA、大型 HTML、数据文件及音视频资源的增量部署与托管服务。
 
-## 功能特性
+Microsite Container 从 HTML Container 演进而来，但两者定位不同：HTML Container
+继续负责单个 HTML/Markdown 文件的轻量分享；本项目将一个站点视为由 manifest 描述的
+文件集合，通过内容哈希复用资源，并以不可变 deployment 和原子指针完成发布。
 
-- **HTML / Markdown 托管**：上传 `.html` 或 `.md` 文件，生成独立的访问链接；Markdown 会在访问时自动渲染并生成目录
-- **Slug 路由**：支持自定义可读 URL（如 `/view/project/report`），同 slug 重复上传自动替换
-- **多管理员**：超级管理员 + 普通管理员角色，邀请制注册
-- **权限隔离**：普通管理员只能管理自己的页面，超管可管理全部
-- **访问控制**：支持公开、仅自己、密码、所有登录用户、指定用户五种可见性
-- **REST API**：程序化上传/替换/删除，适合 CI/CD、Codex 或 Claude Code 自动化
-- **Codex Skill 安装**：提供 `/api/install-skill` 安装脚本，默认安装到 Codex，兼容 Claude Code
-- **响应式 UI**：桌面端表格 + 移动端卡片布局，支持拖拽上传
-- **Docker 部署**：一键部署，SQLite 存储无需外部数据库
+## 当前能力
 
-## 技术栈
+- 多站点：每个用户可维护多个独立 slug 的静态站点
+- 不可变部署：deployment 完成后不再修改，旧版本保留稳定访问地址
+- 增量同步：客户端先发送 manifest，服务端仅返回缺失的 SHA-256 blob
+- 流式大文件上传：不把音频、视频或大型数据文件一次性载入内存
+- 内容寻址存储：相同文件跨部署复用，本地磁盘目录可迁移到 S3/R2
+- 原子激活：SQLite 事务一次切换站点的 active deployment，不暴露半成品
+- 静态资源服务：支持 MIME、ETag、Range、跨域资源访问和 SPA fallback
+- Nginx 数据面：可通过 `X-Accel-Redirect` 将文件传输卸载给 Nginx
+- Codex/Claude Skill：扫描目录、生成 manifest、上传缺失资源、finalize 并 activate
+- 旧单文件接口暂时保留，便于迁移；新站点应使用 `/api/sites` 接口
 
-| 组件 | 技术 |
-|------|------|
-| 后端 | FastAPI + Uvicorn |
-| 数据库 | SQLite |
-| 模板 | Jinja2 |
-| 部署 | Docker + Nginx |
-| 依赖 | 仅 Python 标准库 + FastAPI |
+当前第一阶段的 microsite 数据面是公开访问；API Token 只保护创建和发布操作。不要把
+私密资源部署为 microsite。站点级访问控制将在与独立资源 Origin 的鉴权策略一起加入。
+
+## 架构
+
+```text
+deploy CLI / CI
+      │  manifest、认证、发布控制
+      ▼
+FastAPI + SQLite                         控制面
+      │  active_deployment_id 原子切换
+      ▼
+content-addressed local blobs + Nginx   数据面
+```
+
+数据默认位于 `app/data/microsites/`：
+
+```text
+microsites/
+├── blobs/
+│   └── ab/abcdef...    # SHA-256 分片目录
+└── tmp/                 # 上传校验完成前的临时文件
+```
+
+SQLite 只保存站点、部署、文件映射和 blob 元数据。静态文件不存入数据库。
 
 ## 快速开始
 
@@ -31,146 +52,166 @@
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-
-# 启动（默认账号 admin/admin123）
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-访问 http://localhost:8000/admin/login
+访问 `http://localhost:8000/admin/login`。首次本地启动在未配置密码哈希时仍会创建
+`admin/admin123`，生产环境必须覆盖该默认值。
 
-### Docker 部署
+### Docker
 
 ```bash
 cp .env.example .env
-# 编辑 .env 填入密码哈希和 session secret
-
+# 编辑 .env
 docker compose --env-file .env up -d --build
 ```
 
-## 环境变量
+Docker 将宿主机 `./data` 挂载到容器的 `app/data`，因此数据库和 blob 会持久化。
 
-| 变量 | 说明 | 必填 |
-|------|------|:---:|
-| `ADMIN_USERNAME` | 超级管理员用户名（仅首次初始化使用） | 否，默认 `admin` |
-| `ADMIN_PASSWORD_HASH` | 超级管理员密码的 SHA-256 哈希 | 是 |
-| `SESSION_SECRET` | Session 签名密钥 | 是 |
-| `API_KEY` | REST API 认证密钥 | 否 |
+## Manifest 部署协议
 
-生成密码哈希：
-```bash
-python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
+### 1. 创建站点
+
+```http
+POST /api/sites
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{"slug":"vietnamese-learning","title":"Vietnamese Learning"}
 ```
 
-生成 Session Secret / API Key：
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+slug 只接受小写字母、数字、点、短横线和下划线。
+
+### 2. 创建 staging deployment
+
+```http
+POST /api/sites/vietnamese-learning/deployments
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{
+  "entrypoint": "index.html",
+  "spa_fallback": true,
+  "files": [
+    {
+      "path": "index.html",
+      "sha256": "<64-char sha256>",
+      "size": 9427088,
+      "content_type": "text/html"
+    }
+  ]
+}
 ```
 
-## API 接口
+响应中的 `missing_blobs` 是本次真正需要上传的哈希列表。
 
-所有 API 接口使用 `Authorization: Bearer <API_KEY>` 认证。既支持环境变量里的全局 `API_KEY`，也支持用户在后台生成的个人 API Token。
+### 3. 上传缺失 blob
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `PUT` | `/api/pages/{slug}` | 创建或替换页面（同 slug 自动覆盖） |
-| `GET` | `/api/pages` | 列出所有页面 |
-| `GET` | `/api/users` | 列出活跃用户，用于指定用户授权 |
-| `DELETE` | `/api/pages/{slug}` | 删除页面 |
-
-### 上传示例
-
-```bash
-curl -X PUT https://your-domain.com/api/pages/project/report \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "title=项目报告" \
-  -F "file=@output.html"
+```http
+PUT /api/sites/{slug}/deployments/{deployment_id}/blobs/{sha256}
+Authorization: Bearer TOKEN
+Content-Type: application/octet-stream
+Content-Length: ...
 ```
 
-响应：
-```json
-{"slug": "project/report", "id": "a1b2c3d4", "url": "/view/project/report", "visibility": "public"}
+服务端在落盘前同时校验声明长度、实际长度和 SHA-256。一个 deployment 只能上传其
+manifest 引用的 blob。
+
+### 4. 校验并原子激活
+
+```http
+POST /api/sites/{slug}/deployments/{deployment_id}/finalize
+POST /api/sites/{slug}/deployments/{deployment_id}/activate
 ```
 
-### Markdown 上传
+finalize 确认所有 blob 都存在后将部署冻结为 `ready`；activate 在一个 SQLite 写事务中
+把旧版本标为 `superseded`，并切换站点的 active deployment。对任一 `superseded`
+deployment 再次调用 activate 即可原子回滚。
 
-`.md` 文件可以直接上传，不需要先转成 HTML：
+访问地址：
 
-```bash
-curl -X PUT https://your-domain.com/api/pages/project/readme \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "title=项目说明" \
-  -F "file=@README.md"
-```
+- 当前版本：`/sites/{slug}/`
+- 不可变版本：`/_deployments/{deployment_id}/`
 
-访问 `/view/project/readme` 时，服务会用 `marked.js` 渲染 Markdown，并生成左侧目录。
+## Skill
 
-### 访问权限参数
-
-`PUT /api/pages/{slug}` 支持以下可选表单参数：
-
-| 参数 | 说明 |
-|------|------|
-| `visibility` | `public`、`private`、`password`、`users_all`、`users_specific` |
-| `view_password` | `password` 模式下的访问密码，至少 8 位 |
-| `allowed_user_ids` | `users_specific` 模式下允许访问的用户 ID，可重复提交多个 |
-
-同一 slug 重新上传时，如果不传 `visibility`，会保留原页面的访问权限，不会把受限页面降级为公开。
-
-### 安装 Skill
-
-登录后台生成 API Token 后，可以通过安装脚本把上传工具安装到本机 Agent：
+登录后台生成个人 API Token 后安装：
 
 ```bash
-# 默认安装到 Codex: ~/.codex/skills/html-container
-curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_API_TOKEN" | bash
-
-# 如需安装给 Claude Code: ~/.claude/skills/html-container
-curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_API_TOKEN&target=claude" | bash
+curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_TOKEN" | bash
 ```
 
-安装后的 CLI 配置在 `~/.config/html-container/credentials.env`，脚本路径为 `~/.codex/skills/html-container/scripts/upload.py` 或 `~/.claude/skills/html-container/scripts/upload.py`。
+安装位置为 `~/.codex/skills/microsite-container`，配置位于
+`~/.config/microsite-container/credentials.env`。
 
-## 用户权限
-
-| 角色 | 查看页面 | 上传 | 替换/删除 | 管理用户 |
-|------|:---:|:---:|:---:|:---:|
-| super_admin | 全部 | 可以 | 全部 | 可以 |
-| admin | 自己上传的页面；以及被授权访问的页面 | 可以 | 仅自己 | 不可以 |
-
-### 添加新用户
-
-1. 超管登录 → 用户管理 → 生成邀请链接
-2. 将 `/admin/register/<code>` 链接发给成员
-3. 成员通过邀请链接注册
-
-## 项目结构
-
-```
-├── app/
-│   ├── main.py              # FastAPI 应用（路由、认证、API）
-│   ├── templates/
-│   │   ├── admin.html       # 管理后台（上传、页面列表）
-│   │   ├── login.html       # 登录页
-│   │   ├── register.html    # 邀请注册页
-│   │   └── users.html       # 用户管理页（超管）
-│   └── data/
-│       ├── html_store.db    # SQLite 数据库（git 忽略）
-│       └── uploads/         # 上传的 HTML 文件（git 忽略）
-├── Dockerfile
-├── docker-compose.yml
-├── deploy.sh                # 一键部署脚本（Debian/Ubuntu）
-├── requirements.txt
-└── .env.example
-```
-
-## 部署到服务器
-
-详见 [DEPLOY.md](DEPLOY.md)，或使用一键脚本：
+发布站点目录：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vongoley/html-container/main/deploy.sh | bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py check
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
+  --slug vietnamese-learning \
+  --title "Vietnamese Learning" \
+  --dir ./dist \
+  --entrypoint index.html
 ```
+
+CLI 会自动创建不存在的站点，并完成 hash、manifest、增量上传、finalize 和 activate。
+重复发布相同资源时不会再次上传已有 blob。
+
+## Nginx 数据面
+
+FastAPI 默认直接返回文件，适合本地开发。生产环境设置：
+
+```text
+MICROSITE_ACCEL_PREFIX=/_protected_microsite_blobs
+```
+
+并在反向代理中配置与 blob 目录对应的 internal location：
+
+```nginx
+location /_protected_microsite_blobs/ {
+    internal;
+    alias /absolute/path/to/data/microsites/blobs/;
+}
+```
+
+FastAPI 仍负责 deployment/path 到 hash 的解析、权限边界和响应头；Nginx 负责 Range 与
+文件传输。`MICROSITE_PUBLIC_BASE_URL` 可让 API/Skill 返回独立数据 Origin 的公开地址，
+`MICROSITE_CORS_ORIGIN` 控制资源响应的跨域来源。
+
+## 配额环境变量
+
+| 变量 | 默认值 | 说明 |
+|---|---:|---|
+| `MICROSITE_DATA_DIR` | `app/data/microsites` | blob 与临时文件根目录 |
+| `MICROSITE_MAX_FILES` | `100000` | 单次 deployment 文件数上限 |
+| `MICROSITE_MAX_TOTAL_BYTES` | `53687091200` | manifest 总逻辑大小上限（50 GiB） |
+| `MICROSITE_MAX_BLOB_BYTES` | `5368709120` | 单个 blob 上限（5 GiB） |
+| `MICROSITE_PUBLIC_BASE_URL` | 空 | 静态站点的独立公开 Origin |
+| `MICROSITE_ACCEL_PREFIX` | 空 | Nginx internal location；空表示 FastAPI 直出 |
+| `MICROSITE_CORS_ORIGIN` | `*` | 公共静态资源 CORS 来源 |
+
+## 越南语学习页验证
+
+真实验证对象为：
+`https://html.orcacalf.site/view/53cd5401`。
+
+当前样本大小 9,427,088 字节，包含 6,895 个音频占位。测试不把大型源文件提交到仓库；
+下载到临时目录后执行：
+
+```bash
+VIETNAMESE_LEARNING_HTML=/path/to/vietnamese-learning.html pytest -q
+```
+
+`tests/test_vietnamese_fixture.py` 会验证真实页面规模和音频槽位，并生成外部
+`audio-manifest.json` 测试站点；核心集成测试还会验证 manifest 上传、哈希复用、原子
+激活、SPA fallback 与音频 Range 请求。
+
+## 兼容的旧接口
+
+继承的 `/api/pages/{slug}` 与 `/view/{slug}` 仍可托管单个 HTML/Markdown 文件，但不再是
+本项目的主发布协议。新的多文件站点不要把资源内联到一个巨大 HTML 中。
 
 ## License
 

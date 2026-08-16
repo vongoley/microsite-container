@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Token — HTML Container</title>
+  <title>API Token — Microsite Container</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f9fafb; color: #111; min-height: 100vh; }
@@ -140,7 +140,7 @@
     const agentEl = document.getElementById('agent-instruction');
     if (agentEl && token) {
       const installUrl = buildInstallUrl('codex');
-      agentEl.textContent = '帮我安装 html-container skill 到 Codex。安装脚本地址：' + installUrl + '\n请获取该脚本内容，然后将 SKILL.md 写入 ~/.codex/skills/html-container/SKILL.md，upload.py 写入 ~/.codex/skills/html-container/scripts/upload.py，credentials.env 写入 ~/.config/html-container/credentials.env。脚本里有完整的文件内容和凭证信息。';
+      agentEl.textContent = '帮我安装 microsite-container skill 到 Codex。安装脚本地址：' + installUrl + '\n请获取并执行安装脚本；它会写入 SKILL.md、scripts/deploy.py、agents/openai.yaml 和 ~/.config/microsite-container/credentials.env。脚本里有完整文件内容和凭证信息。';
     }
 
     function copyAgentInstruction() {

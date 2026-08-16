@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "8080:8000"
+      - "127.0.0.1:8080:8000"
     volumes:
       - ./data:/app/app/data
     environment:
@@ -12,3 +12,10 @@ services:
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
       - SESSION_SECRET=${SESSION_SECRET}
       - API_KEY=${API_KEY}
+      - MICROSITE_DATA_DIR=${MICROSITE_DATA_DIR:-/app/app/data/microsites}
+      - MICROSITE_MAX_FILES=${MICROSITE_MAX_FILES:-100000}
+      - MICROSITE_MAX_TOTAL_BYTES=${MICROSITE_MAX_TOTAL_BYTES:-53687091200}
+      - MICROSITE_MAX_BLOB_BYTES=${MICROSITE_MAX_BLOB_BYTES:-5368709120}
+      - MICROSITE_PUBLIC_BASE_URL=${MICROSITE_PUBLIC_BASE_URL:-}
+      - MICROSITE_ACCEL_PREFIX=${MICROSITE_ACCEL_PREFIX:-}
+      - MICROSITE_CORS_ORIGIN=${MICROSITE_CORS_ORIGIN:-*}

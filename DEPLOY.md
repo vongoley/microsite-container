@@ -1,46 +1,72 @@
-# 部署到 Debian 服务器
+# 部署到 Debian/Ubuntu 服务器
 
-## 前置要求
+## 一键部署
+
+脚本会安装 Docker、Nginx 和 Certbot，克隆当前仓库，创建持久化数据目录，并配置
+Nginx 流式上传、Range 数据面与 HTTPS：
 
 ```bash
-# 安装 Docker & Docker Compose
-apt update && apt install -y docker.io docker-compose-plugin
+curl -fsSL https://raw.githubusercontent.com/vongoley/microsite-container/main/deploy.sh | bash
 ```
 
-## 快速部署
+默认安装目录为 `/opt/microsite-container`。已有目录会执行 `git pull`，已有 `.env` 不会
+被覆盖。
+
+## 手动部署
 
 ```bash
-# 1. 上传项目目录到服务器（排除 .venv/）
-rsync -av --exclude='.venv' --exclude='data' . user@your-server:/opt/html-container/
+apt update
+apt install -y docker.io docker-compose-plugin nginx
 
-# 2. 在服务器上配置环境变量
-cd /opt/html-container
+git clone https://github.com/vongoley/microsite-container.git /opt/microsite-container
+cd /opt/microsite-container
 cp .env.example .env
+```
 
-# 生成密码哈希（把 your-password 换成你的密码）
+至少填写：
+
+```text
+ADMIN_PASSWORD_HASH=<sha256>
+SESSION_SECRET=<random secret>
+API_KEY=<random api key>
+MICROSITE_ACCEL_PREFIX=/_protected_microsite_blobs
+```
+
+生成值：
+
+```bash
 python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
-# 生成随机 SESSION_SECRET
-python3 -c "import secrets; print(secrets.token_hex(32))"
+启动：
 
-# 编辑 .env 填入上面两个值
-nano .env
-
-# 3. 启动
+```bash
 docker compose --env-file .env up -d --build
 ```
 
-## 反向代理（Nginx，推荐）
+## Nginx
+
+应用容器监听宿主机 `127.0.0.1:8080`。推荐配置：
 
 ```nginx
 server {
     listen 80;
     server_name your-domain.com;
 
-    client_max_body_size 20M;
+    # 大型音视频 blob；实际大小仍受应用配额限制。
+    client_max_body_size 0;
+
+    # 必须与 MICROSITE_ACCEL_PREFIX 一致，不能允许客户端直接访问。
+    location /_protected_microsite_blobs/ {
+        internal;
+        alias /opt/microsite-container/data/microsites/blobs/;
+    }
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -49,56 +75,50 @@ server {
 }
 ```
 
-HTTPS 用 certbot：`certbot --nginx -d your-domain.com`
+`internal` 很重要：浏览器只能通过 `/sites/...` 或 `/_deployments/...` 访问资源，FastAPI
+先解析活动部署和文件映射，再让 Nginx 发送对应哈希文件。Nginx 原生处理 Range 请求。
 
-## 数据持久化
-
-上传的文件和数据库存放在 `./data/`，docker compose 已挂载为 volume，容器重建不丢失。
-
-## 更新部署
+HTTPS：
 
 ```bash
-docker compose down
+certbot --nginx -d your-domain.com
+```
+
+## 数据持久化与备份
+
+宿主机 `./data` 映射到容器 `/app/app/data`，包含：
+
+- `html_store.db`：控制面元数据
+- `microsites/blobs/`：内容寻址资源
+- `microsites/tmp/`：未完成上传的临时文件
+- `uploads/`：继承的单文件页面
+
+一致性备份需要同时保存 SQLite 和 `microsites/blobs/`。不要只备份数据库。
+
+## 安装 Skill
+
+在后台生成个人 API Token 后：
+
+```bash
+curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_TOKEN" | bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py check
+```
+
+Claude Code：
+
+```bash
+curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_TOKEN&target=claude" | bash
+```
+
+配置位于 `~/.config/microsite-container/credentials.env`。CLI 直接连接服务地址，不读取
+HTTP 代理环境变量，因此公司内网部署不需要额外的 Clash 绕过命令。
+
+## 更新
+
+```bash
+cd /opt/microsite-container
+git pull
 docker compose --env-file .env up -d --build
 ```
 
-## 安装上传 Skill
-
-登录后台后，进入 `API Token` 页面生成个人 Token，然后在本机安装上传工具。
-
-默认安装到 Codex：
-
-```bash
-curl -fsSL "http://your-domain.com/api/install-skill?token=YOUR_API_TOKEN" | bash
-```
-
-如需继续给 Claude Code 使用：
-
-```bash
-curl -fsSL "http://your-domain.com/api/install-skill?token=YOUR_API_TOKEN&target=claude" | bash
-```
-
-安装后凭据写入 `~/.config/html-container/credentials.env`，Codex skill 路径为 `~/.codex/skills/html-container`，Claude Code skill 路径为 `~/.claude/skills/html-container`。
-
-如果服务部署在公司内网域名（如 `csbiwithai.intsig.net`），本机调用上传脚本时需要绕过 Clash/HTTP 代理：
-
-```bash
-COMPANY_NO_PROXY="env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy NO_PROXY=csbiwithai.intsig.net,.intsig.net,localhost,127.0.0.1 no_proxy=csbiwithai.intsig.net,.intsig.net,localhost,127.0.0.1"
-$COMPANY_NO_PROXY python3 ~/.codex/skills/html-container/scripts/upload.py check
-```
-
-## 上传说明
-
-支持上传 `.html` 和 `.md` 文件。Markdown 文件应直接上传原文，访问时服务端页面会用 `marked.js` 渲染并生成目录，不需要先用脚本或 Pandoc 转成 HTML。
-
-同一 slug 重新上传会替换内容；如果通过 API 上传时不传 `visibility`，会保留原页面访问权限。
-
-## 权限说明
-
-| 角色 / 访问者 | 访问路径 | 能做什么 |
-|------|---------|---------|
-| 超级管理员 | `/admin` | 管理全部页面、用户、邀请、Token |
-| 管理员 | `/admin` | 上传、管理自己的页面，复制分享链接，生成个人 Token |
-| 被分享者 | `/view/<id>` 或 `/view/<slug>` | 按页面可见性访问 HTML / Markdown 页面 |
-
-页面可见性支持 `public`、`private`、`password`、`users_all`、`users_specific` 五种模式。
+部署记录和 blob 均在挂载卷中，重建容器不会丢失。
