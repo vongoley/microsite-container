@@ -2,7 +2,9 @@ from fastapi import FastAPI, Request, Response, UploadFile, File, Form, HTTPExce
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 import uvicorn
+import json
 import sqlite3
 import uuid
 import hashlib
@@ -10,11 +12,14 @@ import hmac
 import os
 import re
 import secrets
+import tempfile
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from app import microsites
 from app.microsites import create_data_router, create_microsite_router, init_microsite_schema
 from app.runtime_data import create_runtime_router
 
@@ -31,6 +36,7 @@ SESSION_COOKIE = "admin_session"
 SESSION_TTL_HOURS = 24
 TZ_BEIJING = timezone(timedelta(hours=8))
 ALLOWED_EXTENSIONS = (".html", ".md")
+SITE_EXPORT_WARNING_BYTES = 50 * 1024 * 1024
 
 VALID_VISIBILITY = {"public", "private", "password", "users_all", "users_specific"}
 PV_COOKIE_PREFIX = "pv_"
@@ -753,29 +759,287 @@ async def logout():
 
 # ── Admin: dashboard ──────────────────────────────────────────────────────────
 
+
+def _format_bytes(size: int) -> str:
+    value = float(max(0, size))
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{int(value)} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{size} B"
+
+
+def _admin_sites(db: sqlite3.Connection, user: dict) -> list[dict]:
+    where = "" if user["role"] == "super_admin" else "WHERE s.owner_id = ?"
+    params = () if user["role"] == "super_admin" else (user["id"],)
+    rows = db.execute(
+        f"""
+        SELECT s.id, s.slug, s.title, s.owner_id, s.active_deployment_id,
+               s.created_at, s.updated_at, u.username AS owner_name,
+               d.state AS deployment_state, d.entrypoint, d.spa_fallback,
+               d.file_count, d.total_size, d.created_at AS deployment_created_at,
+               d.activated_at,
+               COALESCE((
+                   SELECT COUNT(*) FROM site_document_configs c
+                   WHERE c.site_id = s.id
+               ), 0) AS runtime_document_count,
+               COALESCE((
+                   SELECT COUNT(*) FROM site_document_versions v
+                   WHERE v.site_id = s.id
+               ), 0) AS runtime_version_count,
+               COALESCE((
+                   SELECT SUM(LENGTH(CAST(value_json AS BLOB)))
+                   FROM site_documents sd WHERE sd.site_id = s.id
+               ), 0) AS runtime_current_bytes,
+               COALESCE((
+                   SELECT SUM(LENGTH(CAST(value_json AS BLOB)))
+                   FROM site_document_versions sv WHERE sv.site_id = s.id
+               ), 0) AS runtime_history_bytes,
+               COALESCE((
+                   SELECT SUM(LENGTH(CAST(schema_json AS BLOB)))
+                   FROM site_document_configs sc WHERE sc.site_id = s.id
+               ), 0) AS runtime_schema_bytes
+        FROM sites s
+        LEFT JOIN users u ON u.id = s.owner_id
+        LEFT JOIN deployments d ON d.id = s.active_deployment_id
+        {where}
+        ORDER BY s.updated_at DESC
+        """,
+        params,
+    ).fetchall()
+
+    sites = []
+    for row in rows:
+        site = dict(row)
+        static_bytes = int(site.get("total_size") or 0)
+        runtime_bytes = sum(
+            int(site.get(key) or 0)
+            for key in ("runtime_current_bytes", "runtime_history_bytes", "runtime_schema_bytes")
+        )
+        archive_entries = (
+            int(site.get("file_count") or 0)
+            + int(site.get("runtime_document_count") or 0)
+            + int(site.get("runtime_version_count") or 0)
+            + 2
+        )
+        # ZIP_STORED adds local/central headers and repeats every UTF-8 path. Asset
+        # paths may be long, so use a conservative per-entry allowance; over-warning
+        # near 50 MB is preferable to silently starting an unexpectedly large export.
+        export_size = static_bytes + runtime_bytes + archive_entries * 3072 + 8192
+        site.update(
+            {
+                "url": f"/sites/{quote(site['slug'])}/",
+                "file_count": int(site.get("file_count") or 0),
+                "total_size": static_bytes,
+                "static_size_label": _format_bytes(static_bytes),
+                "export_size_bytes": export_size,
+                "export_size_label": _format_bytes(export_size),
+                "requires_large_export_confirmation": export_size > SITE_EXPORT_WARNING_BYTES,
+            }
+        )
+        sites.append(site)
+    return sites
+
+
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db), user: dict = Depends(get_current_user)):
-    if user["role"] == "super_admin":
-        rows = db.execute(
-            "SELECT p.*, u.username as owner_name FROM pages p LEFT JOIN users u ON p.owner_id = u.id ORDER BY p.uploaded_at DESC"
-        ).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT p.*, u.username as owner_name FROM pages p LEFT JOIN users u ON p.owner_id = u.id WHERE p.owner_id = ? ORDER BY p.uploaded_at DESC",
-            (user["id"],),
-        ).fetchall()
-    pages = [dict(r) for r in rows]
-    for p in pages:
-        if p.get("visibility") == "users_specific":
-            p["allowed_ids"] = [r["user_id"] for r in db.execute(
-                "SELECT user_id FROM page_permissions WHERE page_id = ?", (p["id"],)).fetchall()]
-        else:
-            p["allowed_ids"] = []
-    owners = sorted({p["owner_name"] for p in pages if p["owner_name"]})
-    all_users = [dict(r) for r in db.execute(
-        "SELECT id, username FROM users WHERE is_active = 1 ORDER BY username").fetchall()]
+    sites = _admin_sites(db, user)
+    owners = sorted({site["owner_name"] for site in sites if site["owner_name"]})
     return templates.TemplateResponse(request, "admin.html",
-        {"pages": pages, "user": user, "owners": owners, "all_users": all_users})
+        {
+            "sites": sites,
+            "user": user,
+            "owners": owners,
+            "large_export_bytes": SITE_EXPORT_WARNING_BYTES,
+        })
+
+
+@app.get("/admin/sites/{site_id}/download")
+def download_site_archive(
+    site_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    """Export the active site bundle, Runtime Data, and retained data history."""
+    site = db.execute(
+        """
+        SELECT s.*, d.state AS deployment_state, d.entrypoint, d.spa_fallback,
+               d.file_count, d.total_size, d.created_at AS deployment_created_at,
+               d.activated_at
+        FROM sites s
+        LEFT JOIN deployments d ON d.id = s.active_deployment_id
+        WHERE s.id = ?
+        """,
+        (site_id,),
+    ).fetchone()
+    if not site:
+        raise HTTPException(404, "站点不存在")
+    if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
+        raise HTTPException(403, "无权下载此站点")
+    if not site["active_deployment_id"] or site["deployment_state"] != "active":
+        raise HTTPException(409, "站点没有可导出的激活部署")
+
+    files = db.execute(
+        """
+        SELECT df.path, df.size, df.content_type, df.blob_sha256, b.storage_path
+        FROM deployment_files df
+        JOIN blobs b ON b.sha256 = df.blob_sha256
+        WHERE df.deployment_id = ?
+        ORDER BY df.path
+        """,
+        (site["active_deployment_id"],),
+    ).fetchall()
+    if len(files) != site["file_count"]:
+        raise HTTPException(409, "部署资源不完整，暂时无法导出")
+
+    documents = db.execute(
+        """
+        SELECT d.document_key, c.read_policy, c.write_policy, c.max_bytes,
+               COALESCE(c.schema_version, d.schema_version) AS schema_version,
+               c.schema_json, c.active_deployment_id,
+               d.value_json, d.revision, d.updated_at, d.updated_by
+        FROM site_documents d
+        LEFT JOIN site_document_configs c
+          ON c.site_id = d.site_id AND c.document_key = d.document_key
+        WHERE d.site_id = ?
+        UNION ALL
+        SELECT c.document_key, c.read_policy, c.write_policy, c.max_bytes,
+               c.schema_version, c.schema_json, c.active_deployment_id,
+               NULL, NULL, NULL, NULL
+        FROM site_document_configs c
+        LEFT JOIN site_documents d
+          ON d.site_id = c.site_id AND d.document_key = c.document_key
+        WHERE c.site_id = ? AND d.document_key IS NULL
+        ORDER BY 1
+        """,
+        (site_id, site_id),
+    ).fetchall()
+    versions = db.execute(
+        """
+        SELECT document_key, revision, value_json, schema_version,
+               updated_at, updated_by, source_deployment_id
+        FROM site_document_versions
+        WHERE site_id = ?
+        ORDER BY document_key, revision
+        """,
+        (site_id,),
+    ).fetchall()
+
+    microsites.TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f"export-{site['slug']}-",
+        suffix=".zip",
+        dir=microsites.TEMP_DIR,
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    archive_root = f"{site['slug']}/"
+
+    def write_json(archive: zipfile.ZipFile, name: str, payload) -> None:
+        archive.writestr(
+            archive_root + name,
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                allow_nan=False,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        )
+
+    try:
+        with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+            export_meta = {
+                "formatVersion": 1,
+                "exportedAt": datetime.now(timezone.utc).isoformat(),
+                "site": {
+                    "id": site["id"],
+                    "slug": site["slug"],
+                    "title": site["title"],
+                },
+                "deployment": {
+                    "id": site["active_deployment_id"],
+                    "entrypoint": site["entrypoint"],
+                    "spaFallback": bool(site["spa_fallback"]),
+                    "fileCount": site["file_count"],
+                    "totalSize": site["total_size"],
+                    "createdAt": site["deployment_created_at"],
+                    "activatedAt": site["activated_at"],
+                },
+                "layout": {
+                    "site/": "当前激活部署的全部前端与资源文件",
+                    "runtime-data/documents/": "Runtime Data 当前值与配置",
+                    "runtime-data/history/": "服务端当前保留的 Runtime Data 版本历史",
+                },
+            }
+            write_json(archive, "export.json", export_meta)
+
+            for item in files:
+                try:
+                    asset_path = microsites.normalize_asset_path(item["path"])
+                except ValueError as exc:
+                    raise HTTPException(409, f"部署包含不安全的资源路径：{item['path']}") from exc
+                source = Path(item["storage_path"])
+                try:
+                    valid = source.is_file() and source.stat().st_size == item["size"]
+                except OSError:
+                    valid = False
+                if not valid:
+                    raise HTTPException(409, f"部署资源缺失或损坏：{asset_path}")
+                archive.write(source, archive_root + "site/" + asset_path)
+
+            for document in documents:
+                schema = json.loads(document["schema_json"]) if document["schema_json"] else None
+                value = json.loads(document["value_json"]) if document["value_json"] else None
+                write_json(
+                    archive,
+                    f"runtime-data/documents/{document['document_key']}.json",
+                    {
+                        "key": document["document_key"],
+                        "value": value,
+                        "revision": document["revision"] or 0,
+                        "schemaVersion": document["schema_version"],
+                        "updatedAt": document["updated_at"],
+                        "updatedBy": document["updated_by"],
+                        "config": {
+                            "read": document["read_policy"],
+                            "write": document["write_policy"],
+                            "maxBytes": document["max_bytes"],
+                            "activeDeploymentId": document["active_deployment_id"],
+                            "schema": schema,
+                        },
+                    },
+                )
+
+            for version in versions:
+                write_json(
+                    archive,
+                    f"runtime-data/history/{version['document_key']}/rev-{version['revision']}.json",
+                    {
+                        "key": version["document_key"],
+                        "value": json.loads(version["value_json"]),
+                        "revision": version["revision"],
+                        "schemaVersion": version["schema_version"],
+                        "updatedAt": version["updated_at"],
+                        "updatedBy": version["updated_by"],
+                        "sourceDeploymentId": version["source_deployment_id"],
+                    },
+                )
+    except HTTPException:
+        temp_path.unlink(missing_ok=True)
+        raise
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        temp_path.unlink(missing_ok=True)
+        raise HTTPException(500, f"生成站点导出包失败：{exc}") from exc
+
+    response = FileResponse(
+        path=str(temp_path),
+        filename=f"{site['slug']}-export.zip",
+        media_type="application/zip",
+        background=BackgroundTask(temp_path.unlink, missing_ok=True),
+    )
+    response.headers["X-Microsite-Export-Size"] = str(temp_path.stat().st_size)
+    return _no_store(response)
 
 
 @app.post("/admin/upload")

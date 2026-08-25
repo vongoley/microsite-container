@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Training plan",
+  "description": "Maps ISO calendar dates to one or more normalized training identifiers.",
+  "type": "object",
+  "maxProperties": 3660,
+  "patternProperties": {
+    "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "chest",
+          "back",
+          "legs",
+          "glutes",
+          "shoulders",
+          "biceps",
+          "triceps",
+          "core",
+          "cardio",
+          "rest"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

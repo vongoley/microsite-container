@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="可跨设备同步、支持只读分享的训练日志日历。">
+  <meta name="color-scheme" content="light dark">
+  <title>训练日志</title>
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem("training-log-theme");
+      const systemTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = savedTheme || systemTheme;
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script defer src="/_microsite/sdk/v1.js"></script>
+  <script defer src="assets/app.js"></script>
+</head>
+<body data-site-slug="training-log">
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题">
+    <span aria-hidden="true" id="themeIcon">🌙</span>
+  </button>
+
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow-row">
+        <p class="eyebrow">TRAINING LOG</p>
+        <span class="mode-badge" id="modeBadge">可编辑站点</span>
+      </div>
+      <h1>把每一次训练，<span>留在日历里。</span></h1>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="calendar-panel" aria-labelledby="monthTitle">
+      <div class="calendar-toolbar">
+        <div class="month-heading">
+          <p class="month-kicker" id="monthKicker">训练安排</p>
+          <h2 id="monthTitle">正在加载…</h2>
+          <p class="month-stats" id="monthStats" aria-live="polite">正在读取服务器数据</p>
+        </div>
+
+        <div class="toolbar-actions edit-navigation" aria-label="月份导航和分享">
+          <div class="month-navigation">
+            <button class="icon-button" id="prevMonth" type="button" aria-label="上个月">←</button>
+            <button class="secondary-button" id="todayButton" type="button">回到本月</button>
+            <button class="icon-button" id="nextMonth" type="button" aria-label="下个月">→</button>
+          </div>
+          <button class="primary-button" id="shareButton" type="button">
+            <span aria-hidden="true">↗</span>
+            分享本月
+          </button>
+        </div>
+      </div>
+
+      <div class="share-panel" id="sharePanel" hidden>
+        <div class="share-copy">
+          <strong>只读分享链接已生成</strong>
+          <span>访客将固定看到当前月份，无法修改训练数据。</span>
+        </div>
+        <div class="share-link-row">
+          <input id="shareLink" type="url" readonly aria-label="只读分享链接">
+          <button class="secondary-button" id="copyShareLink" type="button">复制链接</button>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+        <span id="saveIndicator" role="status" aria-live="polite">正在连接 Runtime Data…</span>
+        <a class="login-link" id="loginLink" href="/admin/login" hidden>登录后编辑</a>
+      </div>
+
+      <div class="legend" id="legend" aria-label="训练项目图例"></div>
+
+      <div class="calendar" aria-label="月度训练日志">
+        <div class="weekday-row" aria-hidden="true">
+          <span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid" role="grid" aria-labelledby="monthTitle">
+          <div class="loading-card">正在读取训练日志…</div>
+        </div>
+      </div>
+
+      <p class="privacy-note" id="privacyNote">
+        <span aria-hidden="true">●</span>
+        <span><strong>服务器同步</strong>：每次保存立即更新 Runtime Data；发布新版站点不会覆盖训练日志。</span>
+      </p>
+    </section>
+  </main>
+
+  <dialog id="scheduleDialog" aria-labelledby="dialogTitle">
+    <form method="dialog" id="scheduleForm">
+      <div class="dialog-header">
+        <div>
+          <p class="dialog-kicker">编辑训练</p>
+          <h2 class="dialog-title" id="dialogTitle">选择日期</h2>
+          <p class="dialog-subtitle" id="dialogSubtitle">可多选；不选训练时会保存为休息日</p>
+        </div>
+        <button class="close-button" id="closeDialog" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <div class="training-options" id="trainingOptions"></div>
+
+      <div class="dialog-actions">
+        <button class="secondary-button" id="clearDay" type="button">设为休息</button>
+        <button class="secondary-button" id="cancelDialog" type="button">取消</button>
+        <button class="primary-button" id="saveDay" type="submit" value="save">保存训练</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

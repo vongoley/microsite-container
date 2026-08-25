@@ -1,0 +1,15 @@
+{
+  "runtimeData": {
+    "documents": {
+      "training-plan": {
+        "scope": "site",
+        "read": "public",
+        "write": "owner",
+        "schemaVersion": 1,
+        "schema": "schemas/training-plan.schema.json",
+        "seed": "data/training-plan.json",
+        "maxBytes": 1048576
+      }
+    }
+  }
+}

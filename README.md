@@ -17,6 +17,7 @@ Microsite Container 从 HTML Container 演进而来，但两者定位不同：HT
 - 静态资源服务：支持 MIME、ETag、Range、跨域资源访问和 SPA fallback
 - Nginx 数据面：可通过 `X-Accel-Redirect` 将文件传输卸载给 Nginx
 - Runtime Data：微站点通过统一 SDK 读写站点级 JSON Document，支持 Schema、版本冲突和历史留存
+- 站点管理后台：集中查看当前激活部署，并导出完整站点资源与 Runtime Data ZIP
 - Codex/Claude Skill：扫描目录、生成 manifest、上传缺失资源、finalize 并 activate
 - 旧单文件接口暂时保留，便于迁移；新站点应使用 `/api/sites` 接口
 
@@ -65,6 +66,26 @@ uvicorn app.main:app --reload --port 8000
 访问 `http://localhost:8000/admin/login`。首次本地启动在未配置密码哈希时仍会创建
 `admin/admin123`，生产环境必须覆盖该默认值。
 
+登录后的 Admin 是部署站点管理页，不提供手动文件上传入口。站点应由 Codex、部署 CLI 或
+CI 发布；页面会展示当前激活 deployment、资源规模、Runtime Document 数量和最近部署时间。
+
+### Admin 完整导出
+
+已激活站点可以从 Admin 下载 ZIP。导出结构如下：
+
+```text
+{slug}/
+├── export.json                         # 站点与当前 deployment 元信息
+├── site/                               # 当前激活部署的全部前端和资源文件
+└── runtime-data/
+    ├── documents/{key}.json            # Runtime Data 当前值、revision 与配置
+    └── history/{key}/rev-{n}.json       # 服务端当前保留的版本历史
+```
+
+导出仅允许站点 owner 或 super admin 操作。Admin 根据静态资源、Runtime Data 和 ZIP 目录开销
+估算导出大小；超过 50 MB 时会先弹窗说明内容和耗时，用户确认后才开始生成下载。ZIP 在服务端
+临时目录生成，响应完成后自动删除，不会长期占用导出副本空间。
+
 ### Docker
 
 ```bash
@@ -74,6 +95,12 @@ docker compose --env-file .env up -d --build
 ```
 
 Docker 将宿主机 `./data` 挂载到容器的 `app/data`，因此数据库和 blob 会持久化。
+
+## 示例站点
+
+- [`examples/training-log`](examples/training-log/)：移动端优先的训练日志微站点。演示 Runtime
+  Data 初始化、跨设备保存、revision 冲突保护，以及固定月份的公网只读分享链接。原单文件
+  HTML 的内嵌训练数据通过 seed 完整迁移，后续 deployment 不会覆盖线上数据。
 
 ## Manifest 部署协议
 
@@ -341,7 +368,8 @@ VIETNAMESE_LEARNING_HTML=/path/to/vietnamese-learning.html pytest -q
 ## 兼容的旧接口
 
 继承的 `/api/pages/{slug}` 与 `/view/{slug}` 仍可托管单个 HTML/Markdown 文件，但不再是
-本项目的主发布协议。新的多文件站点不要把资源内联到一个巨大 HTML 中。
+本项目的主发布协议，也不再显示于 Admin 站点列表。新的多文件站点不要把资源内联到一个
+巨大 HTML 中。
 
 ## License
 

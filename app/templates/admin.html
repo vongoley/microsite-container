@@ -1,1013 +1,533 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Microsite Container — 管理</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>站点管理 · Microsite Container</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem("microsite-admin-theme");
+      const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = saved || system;
+    })();
+  </script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f9fafb;
-      color: #111;
-      min-height: 100vh;
+    :root {
+      --bg: #f5f6f8;
+      --text: #18201d;
+      --muted: #68716d;
+      --surface: #ffffff;
+      --surface-soft: #f0f3f1;
+      --border: #dce1de;
+      --accent: #236b50;
+      --accent-strong: #174d39;
+      --accent-soft: #e1eee8;
+      --warning: #a65b13;
+      --warning-soft: #fff1dd;
+      --shadow: 0 18px 50px rgba(34, 49, 42, .08);
     }
-    header {
-      background: #fff;
-      border-bottom: 1px solid #e5e7eb;
-      padding: .875rem 1.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+
+    [data-theme="dark"] {
+      --bg: #111714;
+      --text: #edf3ef;
+      --muted: #a0aaa4;
+      --surface: #1b2420;
+      --surface-soft: #232f29;
+      --border: #34423b;
+      --accent: #7fd2ad;
+      --accent-strong: #a2e4c5;
+      --accent-soft: #214537;
+      --warning: #f2b36f;
+      --warning-soft: #49331e;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      min-height: 100dvh;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: clamp(.9rem, .85rem + .25vw, 1rem);
+      line-height: 1.5;
+    }
+    button, input, select { font: inherit; }
+    button, a, input, select { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 46%, transparent);
+      outline-offset: 2px;
+    }
+    a { color: inherit; }
+
+    .theme-toggle {
+      position: fixed;
+      top: max(10px, env(safe-area-inset-top));
+      right: max(10px, env(safe-area-inset-right));
+      z-index: 80;
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      color: var(--text);
+      background: color-mix(in srgb, var(--surface) 90%, transparent);
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .topbar {
       position: sticky;
       top: 0;
-      z-index: 10;
+      z-index: 50;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
-    header h1 { font-size: 1.1rem; font-weight: 600; color: #4f46e5; }
-    header a { font-size: .875rem; color: #6b7280; text-decoration: none; }
-    header a:hover { color: #111; }
-    main { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
-
-    /* Upload card */
-    .upload-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+    .topbar-inner {
+      width: min(calc(100% - 32px), 1180px);
+      min-height: 64px;
+      margin: 0 auto;
+      padding: 9px 52px 9px 0;
     }
-    .upload-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
-    .upload-layout { display: flex; gap: 1.5rem; }
-    .upload-left { flex: 3; display: flex; }
-    .upload-left .drop-zone { flex: 1; min-height: auto; }
-    .upload-right { flex: 2; display: flex; flex-direction: column; gap: .75rem; justify-content: space-between; }
-    .drop-zone {
-      border: 2px dashed #d1d5db;
-      border-radius: 8px;
-      padding: 2.5rem 1rem;
-      text-align: center;
-      color: #9ca3af;
-      font-size: .85rem;
-      cursor: pointer;
-      transition: border-color .15s, background .15s;
-      min-height: 160px;
+    .brand {
+      margin: 0;
+      color: var(--accent-strong);
+      font-size: 1rem;
+      font-weight: 800;
+      letter-spacing: -.01em;
+    }
+    .topnav {
       display: flex;
-      flex-direction: column;
+      flex-wrap: wrap;
       align-items: center;
-      justify-content: center;
-      gap: .5rem;
+      gap: 2px 12px;
+      margin-top: 4px;
     }
-    .drop-zone:hover { border-color: #a5b4fc; background: #fafafe; }
-    .drop-zone.dragover {
-      border-color: #4f46e5;
-      background: #eef2ff;
-      color: #4f46e5;
-    }
-    .drop-zone.has-file { border-color: #6ee7b7; background: #ecfdf5; }
-    .drop-zone-icon { font-size: 2rem; line-height: 1; }
-    .drop-zone-text { font-size: .85rem; }
-    .file-name-display {
-      font-size: .9rem;
-      font-weight: 600;
-      color: #065f46;
-      background: #d1fae5;
-      border-radius: 4px;
-      padding: .25rem .6rem;
-      margin-top: .25rem;
-      word-break: break-all;
-      display: none;
-    }
-    .file-name-display.visible { display: inline-block; }
-    .upload-right input[type=text] {
-      padding: .5rem .75rem;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: .9rem;
-      outline: none;
-      width: 100%;
-    }
-    .upload-right input[type=text]:focus { border-color: #4f46e5; }
-    input[type=file] { display: none; }
-    .btn-upload {
-      padding: .6rem 1.25rem;
-      background: #4f46e5;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: .9rem;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-      align-self: flex-start;
-    }
-    .btn-upload:hover { background: #4338ca; }
-
-    /* Table (desktop) */
-    .table-wrap { width: 100%; overflow-x: auto; border-radius: 8px; }
-    table { width: 100%; min-width: 1120px; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
-    th {
-      text-align: left;
+    .account { color: var(--muted); font-size: .76rem; }
+    .topnav a {
+      min-height: 32px;
+      color: var(--muted);
       font-size: .8rem;
-      font-weight: 600;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      padding: .75rem 1rem;
-      background: #f9fafb;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    td { padding: .75rem 1rem; font-size: .9rem; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #fafafa; }
-    .badge {
-      display: inline-block;
-      font-family: monospace;
-      font-size: .8rem;
-      background: #ede9fe;
-      color: #6d28d9;
-      padding: .1rem .45rem;
-      border-radius: 4px;
-    }
-    .link-cell { display: flex; align-items: center; gap: .5rem; min-width: 0; }
-    .title-col, .owner-col { overflow: hidden; }
-    .title-text {
-      display: -webkit-box;
-      max-height: 2.9em;
-      overflow: hidden;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.45;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-    }
-    .id-col { width: 165px; }
-    .slug-col { width: 250px; }
-    .visibility-col { width: 110px; }
-    .owner-col { width: 140px; }
-    .uploaded-col { width: 155px; }
-    .actions-col { width: 176px; }
-    .id-link, .slug-link {
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .owner-text {
-      display: block;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    th.actions-col, td.actions-col {
-      position: sticky;
-      right: 0;
-      box-shadow: -1px 0 0 #e5e7eb;
-    }
-    th.actions-col { z-index: 3; background: #f9fafb; }
-    td.actions-col { z-index: 2; background: #fff; }
-    tr:hover td.actions-col { background: #fafafa; }
-    .copy-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 20px; height: 20px; padding: 0;
-      border: none;
-      border-radius: 4px;
-      background: none;
-      cursor: pointer;
-      color: #9ca3af;
-      flex-shrink: 0;
-      vertical-align: middle;
-    }
-    .copy-btn svg { width: 14px; height: 14px; }
-    .copy-btn:hover { color: #4f46e5; background: #f3f4f6; }
-    .copy-btn.copied { color: #059669; background: none; }
-    .icon-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 28px; height: 28px; padding: 0;
-      border: 1px solid #d1d5db;
-      border-radius: 5px;
-      background: #fff;
-      cursor: pointer;
-      color: #6b7280;
-      flex-shrink: 0;
-    }
-    .icon-btn svg { width: 15px; height: 15px; }
-    .icon-btn:hover { background: #f3f4f6; color: #4f46e5; }
-    .icon-btn.copied { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 28px;
-      padding: .25rem .5rem;
-      font-size: .8rem;
-      line-height: 1;
-      white-space: nowrap;
+      line-height: 32px;
       text-decoration: none;
-      background: #fff;
-      border: 1px solid #d1d5db;
-      color: #374151;
-      border-radius: 4px;
-      cursor: pointer;
     }
-    .action-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
-    .action-btn-download { color: #4338ca; border-color: #c7d2fe; }
-    .action-btn-download:hover { color: #3730a3; background: #eef2ff; border-color: #a5b4fc; }
-    .action-btn-danger { color: #dc2626; border-color: #fca5a5; }
-    .action-btn-danger:hover { color: #b91c1c; background: #fef2f2; border-color: #f87171; }
-    .empty { text-align: center; color: #9ca3af; padding: 3rem 1rem; font-size: .9rem; }
-    .ts { color: #9ca3af; font-size: .8rem; white-space: nowrap; }
-    .slug-empty { color: #d1d5db; font-size: .8rem; }
+    .topnav a:hover { color: var(--text); }
 
-    /* Search bar */
-    .search-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      margin-bottom: 1rem;
+    main {
+      width: min(calc(100% - 32px), 1180px);
+      margin: 0 auto;
+      padding: 28px 0 max(40px, calc(24px + env(safe-area-inset-bottom)));
     }
-    .search-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-    .search-row .field { display: flex; flex-direction: column; gap: .2rem; }
-    .search-row label { font-size: .7rem; color: #9ca3af; padding-left: .1rem; }
-    .search-row input, .search-row select {
-      padding: .45rem .7rem;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: .85rem;
-      outline: none;
-      background: #fff;
+    .page-heading { display: grid; gap: 6px; margin-bottom: 20px; }
+    .eyebrow {
+      margin: 0;
+      color: var(--accent);
+      font-size: .72rem;
+      font-weight: 850;
+      letter-spacing: .14em;
     }
-    .search-row input:focus, .search-row select:focus { border-color: #4f46e5; }
-    .search-row .field-keyword input { min-width: 220px; }
-    .search-row .field-keyword { flex: 1 1 220px; }
-    .btn-reset {
-      padding: .45rem .9rem;
-      font-size: .85rem;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      background: #f9fafb;
-      cursor: pointer;
-      color: #374151;
-      align-self: flex-end;
+    h1 {
+      margin: 0;
+      font-size: clamp(1.55rem, 1.25rem + 1.5vw, 2.35rem);
+      letter-spacing: -.035em;
+      line-height: 1.12;
     }
-    .btn-reset:hover { background: #f3f4f6; }
-    .search-count { font-size: .8rem; color: #9ca3af; align-self: flex-end; margin-left: auto; }
-    .no-match { text-align: center; color: #9ca3af; padding: 2rem 1rem; font-size: .9rem; display: none; }
+    .heading-copy { max-width: 720px; margin: 0; color: var(--muted); }
 
-    /* Visibility badge */
-    .vis-badge { display: inline-block; font-size: .72rem; padding: .12rem .45rem; border-radius: 4px; white-space: nowrap; }
-    .vis-public { background: #dcfce7; color: #166534; }
-    .vis-private { background: #fee2e2; color: #991b1b; }
-    .vis-password { background: #fef3c7; color: #92400e; }
-    .vis-users_all { background: #dbeafe; color: #1e40af; }
-    .vis-users_specific { background: #ede9fe; color: #6d28d9; }
-    .ops-cell { display: flex; gap: .3rem; align-items: center; flex-wrap: nowrap; }
-    .ops-cell > * { flex: 0 0 auto; }
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .summary-card {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    .summary-card strong { display: block; font-size: 1.35rem; line-height: 1.1; }
+    .summary-card span { color: var(--muted); font-size: .78rem; }
 
-    /* Upload visibility controls */
-    .vis-control { padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: .9rem; width: 100%; outline: none; }
-    .vis-control:focus { border-color: #4f46e5; }
+    .filters {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+    .field { display: grid; gap: 4px; }
+    .field label { color: var(--muted); font-size: .72rem; }
+    .field input, .field select {
+      width: 100%;
+      min-height: 44px;
+      padding: 0 12px;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+    .filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .result-count { color: var(--muted); font-size: .8rem; }
 
-    /* Custom visibility component (replaces native <select>) */
-    .vc { width: 100%; }
-    .vc-dd { position: relative; }
-    .vc-trigger {
-      display: flex; align-items: center; justify-content: space-between; gap: .5rem;
-      width: 100%; padding: .55rem .75rem; border: 1px solid #d1d5db; border-radius: 6px;
-      background: #fff; font-size: .9rem; cursor: pointer; color: #111; text-align: left;
-    }
-    .vc-trigger:hover { border-color: #a5b4fc; }
-    .vc-dd.open .vc-trigger { border-color: #4f46e5; }
-    .vc-arrow { color: #9ca3af; font-size: .7rem; flex-shrink: 0; transition: transform .15s; }
-    .vc-dd.open .vc-arrow { transform: rotate(180deg); }
-    .vc-menu {
-      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
-      background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
-      box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; padding: .25rem;
-    }
-    .vc-dd.open .vc-menu { display: block; }
-    .vc-option { padding: .5rem .6rem; font-size: .9rem; border-radius: 5px; cursor: pointer; }
-    .vc-option:hover { background: #f3f4f6; }
-    .vc-option.selected { background: #eef2ff; color: #4f46e5; font-weight: 500; }
-    .vc-panel { margin-top: .5rem; }
-    .vc-pw-row { display: flex; gap: .4rem; }
-    .vc-pw-row input {
-      flex: 1; padding: .5rem .7rem; border: 1px solid #d1d5db; border-radius: 6px;
-      font-size: .9rem; outline: none; font-family: monospace;
-    }
-    .vc-pw-row input:focus { border-color: #4f46e5; }
-    .vc-btn {
-      padding: .5rem .7rem; font-size: .8rem; white-space: nowrap;
-      border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: pointer; color: #374151;
-    }
-    .vc-btn:hover { background: #f3f4f6; }
-    .vc-btn.done { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
-    .vc-pw-hint { font-size: .72rem; color: #9ca3af; margin-top: .3rem; }
-    /* users_specific: left (available) / right (selected) two-column layout */
-    .vc-twocol { display: flex; gap: .6rem; }
-    .vc-col { flex: 1; min-width: 0; border: 1px solid #e5e7eb; border-radius: 6px; display: flex; flex-direction: column; }
-    .vc-col-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: .4rem .6rem; border-bottom: 1px solid #e5e7eb; font-size: .78rem; color: #6b7280; background: #f9fafb;
-    }
-    .vc-clear { border: none; background: none; color: #dc2626; cursor: pointer; font-size: .78rem; padding: 0; }
-    .vc-clear:hover { text-decoration: underline; }
-    .vc-search {
-      margin: .4rem .5rem 0; padding: .4rem .6rem; border: 1px solid #d1d5db; border-radius: 6px;
-      font-size: .82rem; outline: none;
-    }
-    .vc-search:focus { border-color: #4f46e5; }
-    .vc-list { max-height: 170px; overflow-y: auto; padding: .3rem; }
-    .vc-list:empty::after { content: "无"; color: #d1d5db; font-size: .8rem; display: block; padding: .5rem .4rem; }
-    .vc-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: .4rem .55rem; font-size: .84rem; border-radius: 5px; cursor: pointer;
-    }
-    .vc-item:hover { background: #f3f4f6; }
-    .vc-item .vc-act { color: #4f46e5; font-size: .9rem; flex-shrink: 0; }
-    .vc-item.sel .vc-act { color: #dc2626; }
-    .vc-empty-hint { padding: .5rem .55rem; font-size: .8rem; color: #9ca3af; }
-
-    /* Modal */
-    .modal-overlay {
-      position: fixed; inset: 0; z-index: 100;
-      background: color-mix(in srgb, #000 45%, transparent);
-      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-      display: none; align-items: center; justify-content: center; padding: 1rem;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal-card {
-      background: #fff; border-radius: 12px; padding: 1.5rem;
-      width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.25);
-    }
-    .modal-card-lg { max-width: 560px; }
-    .modal-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: .75rem; }
-    .modal-card p { font-size: .9rem; color: #4b5563; margin-bottom: 1rem; line-height: 1.5; }
-    .modal-card label { display: block; font-size: .8rem; color: #6b7280; margin: .75rem 0 .25rem; }
-    .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.25rem; }
-    .modal-actions button { padding: .5rem 1.1rem; min-height: 40px; border-radius: 6px; font-size: .9rem; cursor: pointer; border: 1px solid #d1d5db; }
-    .btn-cancel { background: #fff; color: #374151; }
-    .btn-cancel:hover { background: #f3f4f6; }
-    .modal-actions .btn-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
-    .modal-actions .btn-danger:hover { background: #b91c1c; }
-    .modal-actions .btn-confirm { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-    .modal-actions .btn-confirm:hover { background: #4338ca; }
-    @media (max-width: 768px) {
-      .modal-actions button { min-height: 44px; flex: 1; }
-    }
-
-    /* Mobile card list */
-    .card-list { display: none; }
-    .page-card {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: .75rem;
-    }
-    .page-card-title {
-      font-weight: 600;
-      font-size: .95rem;
-      margin-bottom: .5rem;
-      display: flex;
-      justify-content: space-between;
+    .button {
+      display: inline-flex;
+      min-height: 44px;
       align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 13px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      background: var(--surface);
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
     }
-    .page-card-title > span {
-      min-width: 0;
-      padding-right: .5rem;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+    .button:hover { border-color: var(--accent); }
+    .button.primary { color: #fff; border-color: var(--accent); background: var(--accent); }
+    [data-theme="dark"] .button.primary { color: #102118; }
+    .button[disabled] { opacity: .48; cursor: not-allowed; }
+
+    .site-list { display: grid; gap: 12px; }
+    .site-card {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
     }
-    .page-card-links { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
-    .page-card-links .link-cell a {
-      flex: 1 1 auto;
-      min-width: 0;
+    .site-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .site-title { margin: 0; font-size: 1rem; }
+    .slug { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
+    .site-url {
+      display: block;
+      margin-top: 8px;
       overflow: hidden;
+      color: var(--accent-strong);
+      font-size: .84rem;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: .8rem;
     }
-    .page-card-meta {
-      display: flex;
-      justify-content: space-between;
+    .badge {
+      display: inline-flex;
+      min-height: 28px;
       align-items: center;
-      gap: .75rem;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 750;
+      white-space: nowrap;
     }
-    .page-card-actions {
+    .badge.active { color: var(--accent-strong); background: var(--accent-soft); }
+    .badge.inactive { color: var(--muted); background: var(--surface-soft); }
+    .site-meta {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: .5rem;
-      padding-top: .75rem;
-      margin-top: .75rem;
-      border-top: 1px solid #f3f4f6;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
     }
-    .page-card-actions form { display: flex; }
-    .page-card-actions .action-btn {
+    .meta-item { min-width: 0; }
+    .meta-label { display: block; color: var(--muted); font-size: .68rem; }
+    .meta-value { display: block; overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+    .site-actions { display: flex; gap: 8px; }
+    .site-actions .button { flex: 1; }
+
+    .table-wrap {
+      display: none;
       width: 100%;
-      min-height: 36px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
     }
+    table { width: 100%; min-width: 980px; border-collapse: collapse; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+    th { color: var(--muted); background: var(--surface-soft); font-size: .72rem; font-weight: 750; }
+    td { font-size: .84rem; }
+    tr:last-child td { border-bottom: 0; }
+    .table-title { display: grid; }
+    .table-link { color: var(--accent-strong); text-decoration: none; }
+    .table-link:hover { text-decoration: underline; }
+    .table-actions { display: flex; gap: 8px; }
+    .table-actions .button { min-height: 40px; }
 
-    /* Responsive */
-    @media (max-width: 1151px) {
-      .table-wrap { display: none; }
-      .card-list {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .75rem;
+    .empty, .no-results {
+      padding: 48px 16px;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+      border-radius: 16px;
+      text-align: center;
+      background: var(--surface);
+    }
+    .no-results { display: none; }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: color-mix(in srgb, #000 48%, transparent);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    .modal.open { display: flex; }
+    .modal-card {
+      width: min(100%, 460px);
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: 0 28px 90px rgba(0, 0, 0, .28);
+    }
+    .modal-card h2 { margin: 0 0 8px; font-size: 1.16rem; }
+    .modal-card p { margin: 0; color: var(--muted); }
+    .warning-note {
+      margin-top: 14px !important;
+      padding: 11px 12px;
+      color: var(--warning) !important;
+      border-radius: 10px;
+      background: var(--warning-soft);
+      font-size: .84rem;
+    }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+
+    @media (min-width: 768px) {
+      .topbar-inner {
+        display: flex;
+        min-height: 68px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 58px 0 0;
       }
-      .page-card { margin-bottom: 0; }
+      .topnav { margin-top: 0; }
+      main { width: min(calc(100% - 48px), 1180px); padding-top: 38px; }
+      .page-heading { margin-bottom: 26px; }
+      .summary-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .filters { grid-template-columns: minmax(240px, 1fr) 180px 150px 150px auto; align-items: end; }
+      .filter-footer { display: contents; }
+      .result-count { align-self: center; text-align: right; }
+      .site-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
-    @media (max-width: 768px) {
-      main { padding: 0 .5rem; margin: 1rem auto; }
-      .upload-card { padding: 1rem; }
-      .upload-layout { flex-direction: column; gap: 1rem; }
-      .upload-left { flex: none; }
-      .drop-zone { min-height: 120px; padding: 1.5rem .75rem; }
-      .btn-upload { width: 100%; padding: .75rem; }
+    @media (min-width: 960px) {
+      .site-list { display: none; }
+      .table-wrap { display: block; }
+    }
 
-      .card-list { grid-template-columns: minmax(0, 1fr); }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Microsite Container</h1>
-    <nav style="display:flex;align-items:center;gap:1rem;">
-      <span style="font-size:.8rem;color:#6b7280;">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
-      <a href="/admin/token" style="font-size:.8rem;">API Token</a>
-      {% if user.role == 'super_admin' %}
-      <a href="/admin/users" style="font-size:.8rem;">用户管理</a>
-      {% endif %}
-      <a href="/admin/logout">退出登录</a>
-    </nav>
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题"><span id="themeIcon" aria-hidden="true">🌙</span></button>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <p class="brand">Microsite Container</p>
+      <nav class="topnav" aria-label="管理导航">
+        <span class="account">{{ user.username }} · {{ '超级管理员' if user.role == 'super_admin' else '管理员' }}</span>
+        <a href="/admin/token">部署凭证</a>
+        {% if user.role == 'super_admin' %}<a href="/admin/users">用户管理</a>{% endif %}
+        <a href="/admin/logout">退出</a>
+      </nav>
+    </div>
   </header>
-  {% set vis_labels = {'public': '🌐 公开', 'private': '🔒 仅我', 'password': '🔑 密码', 'users_all': '👥 注册用户', 'users_specific': '✅ 指定用户'} %}
-  {% macro vis_badge(v) %}<span class="vis-badge vis-{{ v or 'public' }}">{{ vis_labels.get(v or 'public', '🌐 公开') }}</span>{% endmacro %}
-  {% set copy_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>{% endset %}
+
   <main>
-    <div class="upload-card">
-      <h2>上传 HTML</h2>
-      <form id="upload-form" method="post" action="/admin/upload" enctype="multipart/form-data">
-        <div class="upload-layout">
-          <div class="upload-left">
-            <div id="drop-zone" class="drop-zone">
-              <span class="drop-zone-icon">📄</span>
-              <span class="drop-zone-text">点击选择或拖拽 .html / .md 文件</span>
-              <span id="file-name" class="file-name-display"></span>
-            </div>
-            <input id="file-input" type="file" name="file" accept=".html,.md" required>
-          </div>
-          <div class="upload-right">
-            <input type="text" name="title" placeholder="标题（用于列表展示）" required>
-            <input type="text" name="slug" placeholder="slug（可选，如 project/name）">
-            <div class="vc" data-vc="up"></div>
-            <button type="submit" class="btn-upload">上传</button>
-          </div>
-        </div>
-      </form>
-    </div>
+    <section class="page-heading" aria-labelledby="pageTitle">
+      <p class="eyebrow">DEPLOYED SITES</p>
+      <h1 id="pageTitle">站点管理</h1>
+      <p class="heading-copy">查看由 Codex、部署脚本或 CI 发布的站点。每个站点展示当前激活版本，并可导出完整前端资源和 Runtime Data。</p>
+    </section>
 
-    {% if pages %}
-    <div class="search-card">
-      <div class="search-row">
-        <div class="field field-keyword">
-          <label for="s-keyword">关键词（标题 / slug）</label>
-          <input type="text" id="s-keyword" placeholder="输入标题或 slug 关键词…">
-        </div>
-        {% if user.role == 'super_admin' %}
-        <div class="field">
-          <label for="s-owner">上传人</label>
-          <select id="s-owner">
-            <option value="">全部</option>
-            {% for o in owners %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
-          </select>
-        </div>
-        {% endif %}
-        <div class="field">
-          <label for="s-from">上传时间从</label>
-          <input type="date" id="s-from">
-        </div>
-        <div class="field">
-          <label for="s-to">到</label>
-          <input type="date" id="s-to">
-        </div>
-        <button type="button" class="btn-reset" onclick="resetSearch()">重置</button>
-        <span class="search-count" id="search-count"></span>
+    <section class="summary-row" aria-label="部署概览">
+      <div class="summary-card"><strong>{{ sites|length }}</strong><span>站点总数</span></div>
+      <div class="summary-card"><strong>{{ sites|selectattr('active_deployment_id')|list|length }}</strong><span>运行中</span></div>
+      <div class="summary-card"><strong>{{ sites|sum(attribute='file_count') or 0 }}</strong><span>当前版本文件</span></div>
+      <div class="summary-card"><strong>{{ sites|sum(attribute='runtime_document_count') or 0 }}</strong><span>Runtime Documents</span></div>
+    </section>
+
+    {% if sites %}
+    <section class="filters" aria-label="站点筛选">
+      <div class="field"><label for="searchKeyword">关键词</label><input id="searchKeyword" type="search" placeholder="搜索标题或 slug"></div>
+      {% if user.role == 'super_admin' %}
+      <div class="field">
+        <label for="searchOwner">所有者</label>
+        <select id="searchOwner"><option value="">全部</option>{% for owner in owners %}<option value="{{ owner }}">{{ owner }}</option>{% endfor %}</select>
       </div>
-    </div>
+      {% endif %}
+      <div class="field"><label for="searchFrom">部署时间从</label><input id="searchFrom" type="date"></div>
+      <div class="field"><label for="searchTo">到</label><input id="searchTo" type="date"></div>
+      <div class="filter-footer"><button class="button" id="resetFilters" type="button">重置</button><span class="result-count" id="resultCount"></span></div>
+    </section>
 
-    <!-- Desktop: table -->
-    <div class="table-wrap">
-    <table id="pages-table">
-      <thead>
-        <tr>
-          <th>标题</th>
-          <th class="id-col">ID 链接</th>
-          <th class="slug-col">Slug 链接</th>
-          <th class="visibility-col">可见性</th>
-          {% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}
-          <th class="uploaded-col">上传时间</th>
-          <th class="actions-col">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in pages %}
-        <tr class="page-row"
-            data-title="{{ p.title|lower }}"
-            data-slug="{{ (p.slug or '')|lower }}"
-            data-owner="{{ p.owner_name or '' }}"
-            data-date="{{ p.uploaded_at[:10] }}">
-          <td class="title-col"><span class="title-text" title="{{ p.title }}">{{ p.title }}</span></td>
-          <td>
-            <div class="link-cell">
-              <a class="id-link" href="/view/{{ p.id }}" target="_blank" title="/view/{{ p.id }}" style="font-size:.85rem;color:#4f46e5;">/view/{{ p.id }}</a>
-              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
-            </div>
-          </td>
-          <td class="slug-col">
-            {% if p.slug %}
-            <div class="link-cell">
-              <a class="slug-link" href="/view/{{ p.slug }}" target="_blank" title="/view/{{ p.slug }}" style="font-size:.85rem;color:#6d28d9;">/view/{{ p.slug }}</a>
-              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
-            </div>
-            {% else %}
-            <span class="slug-empty">—</span>
-            {% endif %}
-          </td>
-          <td style="white-space:nowrap;" class="vis-cell" data-vis-cell="{{ p.id }}">
-            <div style="display:inline-flex;align-items:center;gap:.3rem;">
-              {{ vis_badge(p.visibility) }}
-              {% if p.visibility == 'password' %}
-              <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
-              {% endif %}
-            </div>
-          </td>
-          {% if user.role == 'super_admin' %}<td class="owner-col" style="font-size:.8rem;color:#6b7280;"><span class="owner-text" title="{{ p.owner_name or '—' }}">{{ p.owner_name or '—' }}</span></td>{% endif %}
-          <td class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</td>
-          <td class="actions-col">
-            <div class="ops-cell">
-              <a class="action-btn action-btn-download" href="/admin/download/{{ p.id }}" download>下载</a>
-              <button type="button" class="action-btn" data-perm-btn="{{ p.id }}" data-title="{{ p.title }}"
-                      onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
-              <form class="delete-form" id="del-{{ p.id }}" method="post" action="/admin/delete/{{ p.id }}" style="margin:0;">
-                <button type="button" class="action-btn action-btn-danger" onclick='openConfirm("del-{{ p.id }}", {{ p.title|tojson }})'>删除</button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    </div>
-
-    <!-- Mobile: card list -->
-    <div class="card-list">
-      {% for p in pages %}
-      <div class="page-card page-row"
-           data-title="{{ p.title|lower }}"
-           data-slug="{{ (p.slug or '')|lower }}"
-           data-owner="{{ p.owner_name or '' }}"
-           data-date="{{ p.uploaded_at[:10] }}">
-        <div class="page-card-title">
-          <span>{{ p.title }}</span>
+    <div class="site-list" id="siteCards">
+      {% for site in sites %}
+      {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
+      <article class="site-card site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
+        <div class="site-card-head">
+          <div><h2 class="site-title">{{ site.title }}</h2><span class="slug">{{ site.slug }}</span></div>
+          <span class="badge {{ 'active' if site.active_deployment_id else 'inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span>
         </div>
-        <div class="page-card-links">
-          <div class="link-cell">
-            <a href="/view/{{ p.id }}" target="_blank" title="/view/{{ p.id }}" style="color:#4f46e5;">/view/{{ p.id }}</a>
-            <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.id }}')">{{ copy_icon }}</button>
-          </div>
-          {% if p.slug %}
-          <div class="link-cell">
-            <a href="/view/{{ p.slug }}" target="_blank" title="/view/{{ p.slug }}" style="color:#6d28d9;">/view/{{ p.slug }}</a>
-            <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/view/{{ p.slug }}')">{{ copy_icon }}</button>
-          </div>
-          {% endif %}
+        <a class="site-url" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a>
+        <div class="site-meta">
+          <div class="meta-item"><span class="meta-label">当前版本</span><span class="meta-value">{{ site.active_deployment_id or '—' }}</span></div>
+          <div class="meta-item"><span class="meta-label">静态资源</span><span class="meta-value">{{ site.file_count or 0 }} 个 · {{ site.static_size_label }}</span></div>
+          <div class="meta-item"><span class="meta-label">Runtime Data</span><span class="meta-value">{{ site.runtime_document_count }} 个文档 · {{ site.runtime_version_count }} 个版本</span></div>
+          <div class="meta-item"><span class="meta-label">最近部署</span><span class="meta-value">{{ deployed_at[:16].replace('T', ' ') }}</span></div>
+          {% if user.role == 'super_admin' %}<div class="meta-item"><span class="meta-label">所有者</span><span class="meta-value">{{ site.owner_name or '—' }}</span></div>{% endif %}
+          <div class="meta-item"><span class="meta-label">预计导出</span><span class="meta-value">{{ site.export_size_label }}</span></div>
         </div>
-        <div class="page-card-meta">
-          <span class="ts">{{ p.uploaded_at[:16].replace("T"," ") }}</span>
-          <span class="vis-cell" data-vis-cell="{{ p.id }}" style="display:inline-flex;gap:.5rem;align-items:center;">
-            {{ vis_badge(p.visibility) }}
-            {% if p.visibility == 'password' %}
-            <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('{{ p.id }}', this)">{{ copy_icon }}</button>
-            {% endif %}
-          </span>
+        <div class="site-actions">
+          <a class="button" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a>
+          <button class="button primary download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
         </div>
-        <div class="page-card-actions">
-          <a class="action-btn action-btn-download" href="/admin/download/{{ p.id }}" download>下载</a>
-          <button type="button" class="action-btn" data-perm-btn="{{ p.id }}" data-title="{{ p.title }}"
-                  onclick='openPerm("{{ p.id }}", {{ p.title|tojson }}, "{{ p.visibility or "public" }}", {{ p.allowed_ids|tojson }})'>权限</button>
-          <form class="delete-form" id="del-{{ p.id }}-card" method="post" action="/admin/delete/{{ p.id }}" style="margin:0;">
-            <button type="button" class="action-btn action-btn-danger" onclick='openConfirm("del-{{ p.id }}-card", {{ p.title|tojson }})'>删除</button>
-          </form>
-        </div>
-      </div>
+      </article>
       {% endfor %}
     </div>
-    <div class="no-match" id="no-match">没有匹配的页面，试试调整搜索条件。</div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>站点</th><th>状态</th><th>当前部署</th><th>资源</th><th>Runtime Data</th>{% if user.role == 'super_admin' %}<th>所有者</th>{% endif %}<th>最近部署</th><th>操作</th></tr></thead>
+        <tbody>
+          {% for site in sites %}
+          {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
+          <tr class="site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
+            <td><span class="table-title"><strong>{{ site.title }}</strong><a class="table-link" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.slug }}</a></span></td>
+            <td><span class="badge {{ 'active' if site.active_deployment_id else 'inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></td>
+            <td><span class="slug">{{ site.active_deployment_id or '—' }}</span></td>
+            <td>{{ site.file_count or 0 }} 个 · {{ site.static_size_label }}</td>
+            <td>{{ site.runtime_document_count }} 个文档 · {{ site.runtime_version_count }} 个版本</td>
+            {% if user.role == 'super_admin' %}<td>{{ site.owner_name or '—' }}</td>{% endif %}
+            <td>{{ deployed_at[:16].replace('T', ' ') }}</td>
+            <td><div class="table-actions"><a class="button" href="{{ site.url }}" target="_blank" rel="noopener">打开</a><button class="button primary download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="no-results" id="noResults">没有匹配的站点，请调整筛选条件。</div>
     {% else %}
-    <div class="empty">暂无已上传的 HTML，请先上传。</div>
+    <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
   </main>
 
-  <!-- Delete confirm modal -->
-  <div class="modal-overlay" id="confirm-modal">
+  <div class="modal" id="largeDownloadModal" role="dialog" aria-modal="true" aria-labelledby="largeDownloadTitle">
     <div class="modal-card">
-      <h3>确认删除</h3>
-      <p id="confirm-msg"></p>
-      <div class="modal-actions">
-        <button type="button" class="btn-cancel" id="confirm-cancel">取消</button>
-        <button type="button" class="btn-danger" id="confirm-ok">确认删除</button>
-      </div>
+      <h2 id="largeDownloadTitle">导出包较大</h2>
+      <p id="largeDownloadMessage"></p>
+      <p class="warning-note">ZIP 将包含当前激活部署的全部前端与资源文件、Runtime Data 当前值及服务端保留的版本历史，生成和下载可能需要一些时间。</p>
+      <div class="modal-actions"><button class="button" id="cancelLargeDownload" type="button">取消</button><button class="button primary" id="confirmLargeDownload" type="button">继续下载</button></div>
     </div>
   </div>
 
-  <!-- Permission edit modal -->
-  <div class="modal-overlay" id="perm-modal">
-    <form class="modal-card modal-card-lg" method="post" id="perm-form">
-      <h3>访问权限</h3>
-      <p id="perm-title" style="font-weight:600;color:#111;margin-bottom:1rem;"></p>
-      <label>可见性</label>
-      <div class="vc" data-vc="perm"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn-cancel" id="perm-cancel">取消</button>
-        <button type="submit" class="btn-confirm">保存</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- All users data for the visibility component (rendered once) -->
-  <script type="application/json" id="all-users-data">{{ all_users|tojson }}</script>
-
   <script>
-    const dropZone = document.getElementById("drop-zone");
-    const fileInput = document.getElementById("file-input");
-    const fileNameEl = document.getElementById("file-name");
+    const THEME_KEY = "microsite-admin-theme";
+    const LARGE_EXPORT_BYTES = {{ large_export_bytes }};
+    const themeButton = document.getElementById("themeToggle");
+    const themeIcon = document.getElementById("themeIcon");
+    const modal = document.getElementById("largeDownloadModal");
+    let pendingDownloadUrl = "";
 
-    dropZone.addEventListener("click", () => fileInput.click());
-
-    ["dragenter", "dragover"].forEach(evt => {
-      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    function updateThemeButton() {
+      const dark = document.documentElement.dataset.theme === "dark";
+      themeIcon.textContent = dark ? "☀️" : "🌙";
+      themeButton.setAttribute("aria-label", dark ? "切换为浅色主题" : "切换为深色主题");
+    }
+    themeButton.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem(THEME_KEY, next);
+      updateThemeButton();
     });
-    ["dragleave", "drop"].forEach(evt => {
-      dropZone.addEventListener(evt, e => { e.preventDefault(); dropZone.classList.remove("dragover"); });
-    });
-    dropZone.addEventListener("drop", e => {
-      const file = e.dataTransfer.files[0];
-      if (file && (file.name.endsWith(".html") || file.name.endsWith(".md"))) {
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        fileInput.files = dt.files;
-        showFileName(file.name);
-      } else {
-        alert("仅支持 .html 和 .md 文件");
-      }
-    });
+    updateThemeButton();
 
-    fileInput.addEventListener("change", function() {
-      if (this.files[0]) showFileName(this.files[0].name);
-    });
-
-    function showFileName(name) {
-      fileNameEl.textContent = name;
-      fileNameEl.classList.add("visible");
-      dropZone.classList.add("has-file");
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ["KB", "MB", "GB", "TB"];
+      let value = bytes / 1024;
+      let unit = units[0];
+      for (let index = 1; value >= 1024 && index < units.length; index += 1) { value /= 1024; unit = units[index]; }
+      return `${value.toFixed(1)} ${unit}`;
     }
-
-    // Copy icon (classic two-square) for JS-rendered buttons + checkmark for the success flash.
-    const COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-    const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-
-    function plainCopy(text) {
-      const ta = document.createElement("textarea");
-      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
-      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
-    }
-
-    // Flash an icon button to a green checkmark, then restore its original icon.
-    function flashCopied(btn) {
-      const original = btn.innerHTML;
-      btn.innerHTML = CHECK_SVG;
-      btn.classList.add("copied");
-      setTimeout(() => { btn.innerHTML = original; btn.classList.remove("copied"); }, 1500);
-    }
-
-    function copyLink(btn, path) {
-      plainCopy(location.origin + path);
-      flashCopied(btn);
-    }
-
-    // ── Copy a page's share password from the list (fetches plaintext) ──
-    async function copyPagePassword(pageId, btn) {
-      try {
-        const r = await fetch("/admin/page/" + pageId + "/password");
-        if (!r.ok) throw new Error("fetch failed");
-        const data = await r.json();
-        if (!data.password) { btn.title = "该页面无密码"; return; }
-        plainCopy(data.password);
-        flashCopied(btn);
-      } catch (e) {
-        btn.title = "复制失败，请重试";
-      }
-    }
-
-    // ── Custom visibility component (dropdown + password gen + user picker) ──
-    const ALL_USERS = JSON.parse(document.getElementById("all-users-data").textContent || "[]");
-    const VIS_OPTIONS = [
-      { v: "public", label: "🌐 所有人可见（默认）" },
-      { v: "private", label: "🔒 仅我可见" },
-      { v: "password", label: "🔑 密码可见" },
-      { v: "users_all", label: "👥 所有注册用户可见" },
-      { v: "users_specific", label: "✅ 指定注册用户可见" },
-    ];
-    const VIS_LABEL = Object.fromEntries(VIS_OPTIONS.map(o => [o.v, o.label]));
-
-    function genPassword() {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-      const arr = new Uint32Array(12);
-      crypto.getRandomValues(arr);
-      return Array.from(arr, n => chars[n % chars.length]).join("");
-    }
-
-    class VisibilityControl {
-      constructor(root) {
-        this.root = root;
-        this.value = "public";
-        this.selectedUsers = [];   // array of {id, username}
-        this.render();
-      }
-      setState(visibility, allowedIds) {
-        this.value = visibility || "public";
-        const ids = allowedIds || [];
-        this.selectedUsers = ALL_USERS.filter(u => ids.includes(u.id));
-        this.render();
-      }
-      render() {
-        const v = this.value;
-        this.root.innerHTML = `
-          <div class="vc-dd">
-            <button type="button" class="vc-trigger">
-              <span class="vc-trigger-label">${VIS_LABEL[v]}</span>
-              <span class="vc-arrow">▼</span>
-            </button>
-            <div class="vc-menu">
-              ${VIS_OPTIONS.map(o => `<div class="vc-option${o.v === v ? " selected" : ""}" data-v="${o.v}">${o.label}</div>`).join("")}
-            </div>
-          </div>
-          <input type="hidden" name="visibility" value="${v}">
-          <div class="vc-panel"></div>
-        `;
-        const dd = this.root.querySelector(".vc-dd");
-        this.root.querySelector(".vc-trigger").onclick = e => {
-          e.stopPropagation();
-          document.querySelectorAll(".vc-dd.open").forEach(o => { if (o !== dd) o.classList.remove("open"); });
-          dd.classList.toggle("open");
-        };
-        this.root.querySelectorAll(".vc-option").forEach(opt => {
-          opt.onclick = e => {
-            e.stopPropagation();
-            this.value = opt.dataset.v;
-            dd.classList.remove("open");
-            this.render();
-          };
-        });
-        this.renderPanel();
-      }
-      renderPanel() {
-        const panel = this.root.querySelector(".vc-panel");
-        if (this.value === "password") {
-          panel.innerHTML = `
-            <div class="vc-pw-row">
-              <input type="text" name="view_password" class="vc-pw-input" placeholder="访问密码（≥8位）" autocomplete="off">
-              <button type="button" class="vc-btn vc-gen">生成</button>
-              <button type="button" class="copy-btn vc-copy" title="复制密码">${COPY_SVG}</button>
-            </div>
-            <div class="vc-pw-hint">点击「生成」自动创建强密码；编辑已有页面时留空保持原密码不变</div>
-          `;
-          const input = panel.querySelector(".vc-pw-input");
-          panel.querySelector(".vc-gen").onclick = () => { input.value = genPassword(); };
-          panel.querySelector(".vc-copy").onclick = (e) => {
-            if (!input.value) { input.value = genPassword(); }
-            plainCopy(input.value);
-            flashCopied(e.currentTarget);
-          };
-        } else if (this.value === "users_specific") {
-          panel.innerHTML = `
-            <div class="vc-twocol">
-              <div class="vc-col">
-                <div class="vc-col-head"><span>可选用户</span></div>
-                <input type="text" class="vc-search" placeholder="搜索用户名…">
-                <div class="vc-list vc-available"></div>
-              </div>
-              <div class="vc-col">
-                <div class="vc-col-head">
-                  <span>已选 <span class="vc-sel-count">0</span></span>
-                  <button type="button" class="vc-clear">清空</button>
-                </div>
-                <div class="vc-list vc-selected"></div>
-              </div>
-            </div>
-            <div class="vc-hidden-inputs"></div>
-          `;
-          this.searchInput = panel.querySelector(".vc-search");
-          this.searchInput.oninput = () => this.renderAvailable();
-          panel.querySelector(".vc-clear").onclick = () => {
-            this.selectedUsers = [];
-            this.renderUsers();
-          };
-          this.renderUsers();
-        } else {
-          panel.innerHTML = "";
+    function closeDownloadModal() { modal.classList.remove("open"); pendingDownloadUrl = ""; }
+    document.querySelectorAll(".download-site").forEach((button) => {
+      button.addEventListener("click", () => {
+        const size = Number(button.dataset.size || 0);
+        const url = button.dataset.url;
+        if (size > LARGE_EXPORT_BYTES) {
+          pendingDownloadUrl = url;
+          document.getElementById("largeDownloadMessage").textContent = `「${button.dataset.title}」的导出内容预计为 ${formatBytes(size)}，超过 50 MB。是否继续？`;
+          modal.classList.add("open");
+          document.getElementById("cancelLargeDownload").focus();
+          return;
         }
-      }
-      renderUsers() {
-        this.renderAvailable();
-        this.renderSelected();
-        this.renderHiddenInputs();
-      }
-      renderAvailable() {
-        const list = this.root.querySelector(".vc-available");
-        if (!list) return;
-        const q = (this.searchInput.value || "").trim().toLowerCase();
-        const selIds = this.selectedUsers.map(u => u.id);
-        const avail = ALL_USERS.filter(u => !selIds.includes(u.id) && u.username.toLowerCase().includes(q));
-        list.innerHTML = avail.map(u =>
-          `<div class="vc-item" data-id="${u.id}"><span>${u.username}</span><span class="vc-act">+ 添加</span></div>`
-        ).join("");
-        list.querySelectorAll(".vc-item").forEach(item => {
-          item.onclick = () => {
-            const u = ALL_USERS.find(x => x.id === item.dataset.id);
-            if (u) { this.selectedUsers.push(u); this.renderUsers(); }
-          };
-        });
-      }
-      renderSelected() {
-        const list = this.root.querySelector(".vc-selected");
-        if (!list) return;
-        list.innerHTML = this.selectedUsers.map(u =>
-          `<div class="vc-item sel" data-id="${u.id}"><span>${u.username}</span><span class="vc-act">× 移除</span></div>`
-        ).join("");
-        list.querySelectorAll(".vc-item").forEach(item => {
-          item.onclick = () => {
-            this.selectedUsers = this.selectedUsers.filter(u => u.id !== item.dataset.id);
-            this.renderUsers();
-          };
-        });
-        const cnt = this.root.querySelector(".vc-sel-count");
-        if (cnt) cnt.textContent = this.selectedUsers.length;
-      }
-      renderHiddenInputs() {
-        const box = this.root.querySelector(".vc-hidden-inputs");
-        if (!box) return;
-        box.innerHTML = this.selectedUsers.map(u =>
-          `<input type="hidden" name="allowed_user_ids" value="${u.id}">`
-        ).join("");
-      }
-    }
-
-    // Close any open dropdown when clicking elsewhere.
-    document.addEventListener("click", () => {
-      document.querySelectorAll(".vc-dd.open").forEach(o => o.classList.remove("open"));
+        window.location.assign(url);
+      });
     });
-
-    const upVC = new VisibilityControl(document.querySelector('[data-vc="up"]'));
-    const permVC = new VisibilityControl(document.querySelector('[data-vc="perm"]'));
-
-    // ── Delete confirmation modal ──
-    let pendingForm = null;
-    function openConfirm(formId, title) {
-      pendingForm = document.getElementById(formId);
-      document.getElementById("confirm-msg").textContent = `确认删除「${title}」？此操作不可撤销。`;
-      document.getElementById("confirm-modal").classList.add("open");
-    }
-    function closeConfirm() { document.getElementById("confirm-modal").classList.remove("open"); pendingForm = null; }
-    document.getElementById("confirm-ok").onclick = () => { if (pendingForm) pendingForm.submit(); };
-    document.getElementById("confirm-cancel").onclick = closeConfirm;
-    document.getElementById("confirm-modal").addEventListener("click", e => { if (e.target.id === "confirm-modal") closeConfirm(); });
-
-    // ── Permission edit modal (AJAX save → update row in place) ──
-    const VIS_BADGE = {
-      public: "🌐 公开", private: "🔒 仅我", password: "🔑 密码",
-      users_all: "👥 注册用户", users_specific: "✅ 指定用户",
-    };
-    let permPageId = null, permTitle = null;
-    function openPerm(pageId, title, visibility, allowedIds) {
-      permPageId = pageId; permTitle = title;
-      document.getElementById("perm-form").action = "/admin/page/" + pageId + "/permission";
-      document.getElementById("perm-title").textContent = title;
-      permVC.setState(visibility, allowedIds);
-      document.getElementById("perm-modal").classList.add("open");
-    }
-    function closePerm() { document.getElementById("perm-modal").classList.remove("open"); }
-    document.getElementById("perm-cancel").onclick = closePerm;
-    document.getElementById("perm-modal").addEventListener("click", e => { if (e.target.id === "perm-modal") closePerm(); });
-
-    // Rebuild a page's visibility cell(s) + perm button after an in-place save.
-    function updateRowVisibility(pageId, visibility, allowedIds) {
-      const label = VIS_BADGE[visibility] || VIS_BADGE.public;
-      document.querySelectorAll(`[data-vis-cell="${pageId}"]`).forEach(cell => {
-        let html = `<span class="vis-badge vis-${visibility}">${label}</span>`;
-        if (visibility === "password") {
-          html += ` <button type="button" class="copy-btn" title="复制访问密码" onclick="copyPagePassword('${pageId}', this)">${COPY_SVG}</button>`;
-        }
-        // table cell wraps in an inline-flex div; card cell is the flex span itself
-        const inner = cell.querySelector("div");
-        if (inner) inner.innerHTML = html; else cell.innerHTML = html;
-      });
-      // Update the perm button's onclick state so re-opening reflects the new value.
-      document.querySelectorAll(`[data-perm-btn="${pageId}"]`).forEach(btn => {
-        const title = btn.dataset.title || "";
-        btn.setAttribute("onclick", `openPerm("${pageId}", ${JSON.stringify(title)}, "${visibility}", ${JSON.stringify(allowedIds || [])})`);
-      });
-    }
-
-    document.getElementById("perm-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const saveBtn = form.querySelector(".btn-confirm");
-      const orig = saveBtn.textContent;
-      saveBtn.textContent = "保存中…"; saveBtn.disabled = true;
-      try {
-        const resp = await fetch(form.action, {
-          method: "POST",
-          headers: { "Accept": "application/json" },
-          body: new FormData(form),
-        });
-        if (!resp.ok) {
-          let msg = "保存失败";
-          try { const d = await resp.json(); if (d.detail) msg = d.detail; } catch (_) {}
-          alert(msg); return;
-        }
-        const data = await resp.json();
-        updateRowVisibility(permPageId, data.visibility, data.allowed_ids);
-        closePerm();
-      } catch (err) {
-        alert("网络错误，保存失败");
-      } finally {
-        saveBtn.textContent = orig; saveBtn.disabled = false;
-      }
+    document.getElementById("cancelLargeDownload").addEventListener("click", closeDownloadModal);
+    document.getElementById("confirmLargeDownload").addEventListener("click", () => {
+      const url = pendingDownloadUrl;
+      closeDownloadModal();
+      if (url) window.location.assign(url);
     });
+    modal.addEventListener("click", (event) => { if (event.target === modal) closeDownloadModal(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDownloadModal(); });
 
-    document.addEventListener("keydown", e => { if (e.key === "Escape") { closeConfirm(); closePerm(); } });
-
-    // ── Search / filter ──────────────────────────────────────────
-    const sKeyword = document.getElementById("s-keyword");
-    const sOwner = document.getElementById("s-owner");
-    const sFrom = document.getElementById("s-from");
-    const sTo = document.getElementById("s-to");
-    const searchCount = document.getElementById("search-count");
-    const noMatch = document.getElementById("no-match");
-
-    function applyFilter() {
-      if (!sKeyword) return;
-      const kw = sKeyword.value.trim().toLowerCase();
-      const owner = sOwner ? sOwner.value : "";
-      const from = sFrom.value;  // YYYY-MM-DD or ""
-      const to = sTo.value;
-      const rows = document.querySelectorAll(".page-row");
-      let visible = 0;
-
-      rows.forEach(row => {
-        const title = row.dataset.title || "";
-        const slug = row.dataset.slug || "";
-        const rowOwner = row.dataset.owner || "";
-        const date = row.dataset.date || "";
-
-        let ok = true;
-        if (kw && !(title.includes(kw) || slug.includes(kw))) ok = false;
-        if (owner && rowOwner !== owner) ok = false;
-        if (from && date < from) ok = false;
-        if (to && date > to) ok = false;
-
-        row.style.display = ok ? "" : "none";
-        if (ok) visible++;
+    const keyword = document.getElementById("searchKeyword");
+    const owner = document.getElementById("searchOwner");
+    const from = document.getElementById("searchFrom");
+    const to = document.getElementById("searchTo");
+    const resultCount = document.getElementById("resultCount");
+    const noResults = document.getElementById("noResults");
+    function applyFilters() {
+      if (!keyword) return;
+      const query = keyword.value.trim().toLowerCase();
+      const ownerValue = owner ? owner.value : "";
+      const visibleSiteIds = new Set();
+      const allSiteIds = new Set();
+      document.querySelectorAll(".site-entry").forEach((entry) => {
+        const matches = (!query || entry.dataset.title.includes(query) || entry.dataset.slug.includes(query))
+          && (!ownerValue || entry.dataset.owner === ownerValue)
+          && (!from.value || entry.dataset.date >= from.value)
+          && (!to.value || entry.dataset.date <= to.value);
+        entry.style.display = matches ? "" : "none";
+        allSiteIds.add(entry.dataset.siteId);
+        if (matches) visibleSiteIds.add(entry.dataset.siteId);
       });
-
-      // De-duplicate count: rows appear in both table and card-list (responsive),
-      // so count unique by half the matched rows.
-      const total = rows.length / 2;
-      const shown = visible / 2;
-      if (searchCount) {
-        const hasFilter = kw || owner || from || to;
-        searchCount.textContent = hasFilter ? `显示 ${shown} / ${total} 项` : `共 ${total} 项`;
-      }
-      if (noMatch) noMatch.style.display = visible === 0 ? "block" : "none";
+      resultCount.textContent = `显示 ${visibleSiteIds.size} / ${allSiteIds.size} 个站点`;
+      noResults.style.display = visibleSiteIds.size ? "none" : "block";
     }
-
-    function resetSearch() {
-      if (sKeyword) sKeyword.value = "";
-      if (sOwner) sOwner.value = "";
-      if (sFrom) sFrom.value = "";
-      if (sTo) sTo.value = "";
-      applyFilter();
+    function resetFilters() {
+      keyword.value = "";
+      if (owner) owner.value = "";
+      from.value = "";
+      to.value = "";
+      applyFilters();
     }
-
-    if (sKeyword) {
-      [sKeyword, sFrom, sTo].forEach(el => el && el.addEventListener("input", applyFilter));
-      if (sOwner) sOwner.addEventListener("change", applyFilter);
-      applyFilter();
+    if (keyword) {
+      [keyword, from, to].forEach((element) => element.addEventListener("input", applyFilters));
+      if (owner) owner.addEventListener("change", applyFilters);
+      document.getElementById("resetFilters").addEventListener("click", resetFilters);
+      applyFilters();
     }
   </script>
 </body>
