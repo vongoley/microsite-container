@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>站点管理 · Microsite Container</title>
+  <title>Microsite Container — 管理</title>
   <script>
     (() => {
       const saved = localStorage.getItem("microsite-admin-theme");
@@ -14,321 +14,330 @@
   </script>
   <style>
     :root {
-      --bg: #f5f6f8;
-      --text: #18201d;
-      --muted: #68716d;
+      --bg: #f9fafb;
+      --text: #111111;
+      --muted: #6b7280;
+      --faint: #9ca3af;
       --surface: #ffffff;
-      --surface-soft: #f0f3f1;
-      --border: #dce1de;
-      --accent: #236b50;
-      --accent-strong: #174d39;
-      --accent-soft: #e1eee8;
-      --warning: #a65b13;
-      --warning-soft: #fff1dd;
-      --shadow: 0 18px 50px rgba(34, 49, 42, .08);
+      --surface-soft: #f9fafb;
+      --surface-hover: #fafafa;
+      --border: #e5e7eb;
+      --border-strong: #d1d5db;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --accent-border: #c7d2fe;
+      --active-bg: #dcfce7;
+      --active-text: #166534;
+      --inactive-bg: #f3f4f6;
+      --inactive-text: #6b7280;
+      --warning-bg: #fef3c7;
+      --warning-text: #92400e;
+      --overlay: rgba(0, 0, 0, .45);
+      --shadow: 0 20px 60px rgba(0, 0, 0, .25);
     }
 
     [data-theme="dark"] {
-      --bg: #111714;
-      --text: #edf3ef;
-      --muted: #a0aaa4;
-      --surface: #1b2420;
-      --surface-soft: #232f29;
-      --border: #34423b;
-      --accent: #7fd2ad;
-      --accent-strong: #a2e4c5;
-      --accent-soft: #214537;
-      --warning: #f2b36f;
-      --warning-soft: #49331e;
-      --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+      --bg: #111827;
+      --text: #f3f4f6;
+      --muted: #d1d5db;
+      --faint: #9ca3af;
+      --surface: #1f2937;
+      --surface-soft: #18212f;
+      --surface-hover: #263244;
+      --border: #374151;
+      --border-strong: #4b5563;
+      --accent: #a5b4fc;
+      --accent-hover: #c7d2fe;
+      --accent-soft: #312e81;
+      --accent-border: #6366f1;
+      --active-bg: #14532d;
+      --active-text: #bbf7d0;
+      --inactive-bg: #374151;
+      --inactive-text: #d1d5db;
+      --warning-bg: #78350f;
+      --warning-text: #fde68a;
+      --overlay: rgba(0, 0, 0, .62);
+      --shadow: 0 20px 60px rgba(0, 0, 0, .45);
     }
 
-    *, *::before, *::after { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
       min-height: 100dvh;
-      margin: 0;
-      color: var(--text);
       background: var(--bg);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: clamp(.9rem, .85rem + .25vw, 1rem);
-      line-height: 1.5;
     }
     button, input, select { font: inherit; }
     button, a, input, select { -webkit-tap-highlight-color: transparent; }
     button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-      outline: 3px solid color-mix(in srgb, var(--accent) 46%, transparent);
+      outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
       outline-offset: 2px;
     }
-    a { color: inherit; }
 
-    .theme-toggle {
-      position: fixed;
-      top: max(10px, env(safe-area-inset-top));
-      right: max(10px, env(safe-area-inset-right));
-      z-index: 80;
-      display: grid;
-      width: 44px;
-      height: 44px;
-      place-items: center;
-      border: 1px solid var(--border);
-      border-radius: 50%;
-      color: var(--text);
-      background: color-mix(in srgb, var(--surface) 90%, transparent);
-      box-shadow: var(--shadow);
-      cursor: pointer;
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-
-    .topbar {
+    header {
       position: sticky;
       top: 0;
-      z-index: 50;
-      border-bottom: 1px solid var(--border);
-      background: color-mix(in srgb, var(--surface) 92%, transparent);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-    .topbar-inner {
-      width: min(calc(100% - 32px), 1180px);
-      min-height: 64px;
-      margin: 0 auto;
-      padding: 9px 52px 9px 0;
-    }
-    .brand {
-      margin: 0;
-      color: var(--accent-strong);
-      font-size: 1rem;
-      font-weight: 800;
-      letter-spacing: -.01em;
-    }
-    .topnav {
+      z-index: 10;
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 2px 12px;
-      margin-top: 4px;
+      justify-content: space-between;
+      min-height: 60px;
+      padding: .875rem 4.75rem .875rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
-    .account { color: var(--muted); font-size: .76rem; }
-    .topnav a {
+    header h1 { color: var(--accent); font-size: 1.1rem; font-weight: 600; }
+    header nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .25rem 1rem; }
+    header .account { color: var(--muted); font-size: .8rem; }
+    header a {
       min-height: 32px;
       color: var(--muted);
       font-size: .8rem;
       line-height: 32px;
       text-decoration: none;
     }
-    .topnav a:hover { color: var(--text); }
+    header a:hover { color: var(--text); }
+
+    .theme-toggle {
+      position: fixed;
+      top: max(8px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right));
+      z-index: 80;
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+    }
 
     main {
-      width: min(calc(100% - 32px), 1180px);
-      margin: 0 auto;
-      padding: 28px 0 max(40px, calc(24px + env(safe-area-inset-bottom)));
+      width: min(calc(100% - 32px), 1200px);
+      margin: 1rem auto;
+      padding-bottom: max(40px, calc(24px + env(safe-area-inset-bottom)));
     }
-    .page-heading { display: grid; gap: 6px; margin-bottom: 20px; }
-    .eyebrow {
-      margin: 0;
-      color: var(--accent);
-      font-size: .72rem;
-      font-weight: 850;
-      letter-spacing: .14em;
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(1.55rem, 1.25rem + 1.5vw, 2.35rem);
-      letter-spacing: -.035em;
-      line-height: 1.12;
-    }
-    .heading-copy { max-width: 720px; margin: 0; color: var(--muted); }
 
-    .summary-row {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 16px;
+    .section-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
     }
-    .summary-card {
-      padding: 14px 16px;
+    .section-heading h2 { font-size: 1rem; font-weight: 600; }
+    .section-heading p { margin-top: .2rem; color: var(--muted); font-size: .8rem; }
+    .site-count { color: var(--faint); font-size: .8rem; white-space: nowrap; }
+
+    .search-card {
+      margin-bottom: 1rem;
+      padding: 1rem 1.25rem;
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 8px;
       background: var(--surface);
     }
-    .summary-card strong { display: block; font-size: 1.35rem; line-height: 1.1; }
-    .summary-card span { color: var(--muted); font-size: .78rem; }
-
-    .filters {
-      display: grid;
-      gap: 12px;
-      margin-bottom: 14px;
-      padding: 14px;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      background: var(--surface);
-    }
-    .field { display: grid; gap: 4px; }
-    .field label { color: var(--muted); font-size: .72rem; }
+    .search-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+    .field { display: flex; flex-direction: column; gap: .2rem; }
+    .field-keyword { flex: 1 1 220px; }
+    .field label { padding-left: .1rem; color: var(--faint); font-size: .7rem; }
     .field input, .field select {
-      width: 100%;
       min-height: 44px;
-      padding: 0 12px;
+      padding: .45rem .7rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      outline: none;
+      background: var(--surface);
       color: var(--text);
+      font-size: .85rem;
+    }
+    .field-keyword input { width: 100%; min-width: 220px; }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+    .btn-reset {
+      min-height: 44px;
+      align-self: flex-end;
+      padding: .45rem .9rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--surface-soft);
+      color: var(--text);
+      cursor: pointer;
+      font-size: .85rem;
+    }
+    .btn-reset:hover { background: var(--surface-hover); }
+    .search-count { align-self: flex-end; margin-left: auto; color: var(--faint); font-size: .8rem; line-height: 44px; }
+
+    .table-wrap { display: none; width: 100%; overflow-x: auto; border-radius: 8px; }
+    table {
+      width: 100%;
+      min-width: 1180px;
+      table-layout: fixed;
+      overflow: hidden;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 8px;
       background: var(--surface);
     }
-    .filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .result-count { color: var(--muted); font-size: .8rem; }
+    th {
+      padding: .75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-soft);
+      color: var(--muted);
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    td { padding: .75rem 1rem; border-bottom: 1px solid var(--surface-soft); font-size: .86rem; vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: var(--surface-hover); }
+    .title-col { width: 180px; overflow: hidden; }
+    .url-col { width: 190px; }
+    .status-col { width: 86px; }
+    .deployment-col { width: 205px; }
+    .resource-col { width: 125px; }
+    .runtime-col { width: 155px; }
+    .owner-col { width: 110px; }
+    .deployed-col { width: 145px; }
+    .actions-col { width: 150px; }
+    .title-text {
+      display: -webkit-box;
+      max-height: 2.9em;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+    .slug, .deployment-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
+    .deployment-id { display: block; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .site-link { display: block; overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+    .site-link:hover { text-decoration: underline; }
+    .ts { color: var(--faint); font-size: .8rem; white-space: nowrap; }
+    th.actions-col, td.actions-col { position: sticky; right: 0; box-shadow: -1px 0 0 var(--border); }
+    th.actions-col { z-index: 3; background: var(--surface-soft); }
+    td.actions-col { z-index: 2; background: var(--surface); }
+    tr:hover td.actions-col { background: var(--surface-hover); }
 
-    .button {
+    .status-badge {
+      display: inline-block;
+      padding: .12rem .45rem;
+      border-radius: 4px;
+      font-size: .72rem;
+      white-space: nowrap;
+    }
+    .status-active { background: var(--active-bg); color: var(--active-text); }
+    .status-inactive { background: var(--inactive-bg); color: var(--inactive-text); }
+
+    .ops-cell { display: flex; align-items: center; gap: .35rem; white-space: nowrap; }
+    .action-btn {
       display: inline-flex;
       min-height: 44px;
       align-items: center;
       justify-content: center;
-      gap: 7px;
-      padding: 0 13px;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
+      padding: .25rem .65rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
       background: var(--surface);
+      color: var(--text);
       cursor: pointer;
+      font-size: .8rem;
+      line-height: 1;
       text-decoration: none;
       white-space: nowrap;
     }
-    .button:hover { border-color: var(--accent); }
-    .button.primary { color: #fff; border-color: var(--accent); background: var(--accent); }
-    [data-theme="dark"] .button.primary { color: #102118; }
-    .button[disabled] { opacity: .48; cursor: not-allowed; }
+    .action-btn:hover { border-color: var(--faint); background: var(--surface-hover); }
+    .action-btn-download { border-color: var(--accent-border); color: var(--accent-hover); }
+    .action-btn-download:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .action-btn[disabled] { opacity: .45; cursor: not-allowed; }
 
-    .site-list { display: grid; gap: 12px; }
-    .site-card {
-      padding: 16px;
+    .card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .page-card {
+      padding: 1rem;
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 8px;
       background: var(--surface);
-      box-shadow: var(--shadow);
     }
-    .site-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .site-title { margin: 0; font-size: 1rem; }
-    .slug { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
-    .site-url {
-      display: block;
-      margin-top: 8px;
-      overflow: hidden;
-      color: var(--accent-strong);
-      font-size: .84rem;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .badge {
-      display: inline-flex;
-      min-height: 28px;
-      align-items: center;
-      padding: 2px 9px;
-      border-radius: 999px;
-      font-size: .72rem;
-      font-weight: 750;
-      white-space: nowrap;
-    }
-    .badge.active { color: var(--accent-strong); background: var(--accent-soft); }
-    .badge.inactive { color: var(--muted); background: var(--surface-soft); }
-    .site-meta {
+    .page-card-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .5rem; font-size: .95rem; font-weight: 600; }
+    .page-card-title > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+    .page-card-link { display: flex; align-items: center; min-width: 0; margin-bottom: .75rem; }
+    .page-card-link a { min-width: 0; overflow: hidden; color: var(--accent); font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+    .page-card-meta {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin: 14px 0;
-      padding: 12px 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-    }
-    .meta-item { min-width: 0; }
-    .meta-label { display: block; color: var(--muted); font-size: .68rem; }
-    .meta-value { display: block; overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
-    .site-actions { display: flex; gap: 8px; }
-    .site-actions .button { flex: 1; }
-
-    .table-wrap {
-      display: none;
-      width: 100%;
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      background: var(--surface);
-    }
-    table { width: 100%; min-width: 980px; border-collapse: collapse; }
-    th, td { padding: 13px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
-    th { color: var(--muted); background: var(--surface-soft); font-size: .72rem; font-weight: 750; }
-    td { font-size: .84rem; }
-    tr:last-child td { border-bottom: 0; }
-    .table-title { display: grid; }
-    .table-link { color: var(--accent-strong); text-decoration: none; }
-    .table-link:hover { text-decoration: underline; }
-    .table-actions { display: flex; gap: 8px; }
-    .table-actions .button { min-height: 40px; }
-
-    .empty, .no-results {
-      padding: 48px 16px;
+      gap: .5rem .75rem;
+      padding: .75rem 0;
+      border-top: 1px solid var(--surface-soft);
       color: var(--muted);
-      border: 1px dashed var(--border);
-      border-radius: 16px;
-      text-align: center;
-      background: var(--surface);
+      font-size: .78rem;
     }
-    .no-results { display: none; }
+    .page-card-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .page-card-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .5rem;
+      padding-top: .75rem;
+      border-top: 1px solid var(--surface-soft);
+    }
+    .page-card-actions .action-btn { width: 100%; }
 
-    .modal {
+    .empty, .no-match {
+      padding: 3rem 1rem;
+      color: var(--faint);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      font-size: .9rem;
+      text-align: center;
+    }
+    .no-match { display: none; margin-top: 1rem; padding: 2rem 1rem; }
+
+    .modal-overlay {
       position: fixed;
       inset: 0;
       z-index: 100;
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 16px;
-      background: color-mix(in srgb, #000 48%, transparent);
+      padding: 1rem;
+      background: var(--overlay);
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
     }
-    .modal.open { display: flex; }
-    .modal-card {
-      width: min(100%, 460px);
-      padding: 20px;
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      background: var(--surface);
-      box-shadow: 0 28px 90px rgba(0, 0, 0, .28);
+    .modal-overlay.open { display: flex; }
+    .modal-card { width: 100%; max-width: 420px; padding: 1.5rem; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+    .modal-card h3 { margin-bottom: .75rem; font-size: 1.05rem; font-weight: 600; }
+    .modal-card p { margin-bottom: 1rem; color: var(--muted); font-size: .9rem; line-height: 1.5; }
+    .modal-card .warning-note { padding: .75rem; border-radius: 6px; background: var(--warning-bg); color: var(--warning-text); font-size: .8rem; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.25rem; }
+    .modal-actions button {
+      min-height: 44px;
+      padding: .5rem 1.1rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: .9rem;
     }
-    .modal-card h2 { margin: 0 0 8px; font-size: 1.16rem; }
-    .modal-card p { margin: 0; color: var(--muted); }
-    .warning-note {
-      margin-top: 14px !important;
-      padding: 11px 12px;
-      color: var(--warning) !important;
-      border-radius: 10px;
-      background: var(--warning-soft);
-      font-size: .84rem;
-    }
-    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+    .btn-cancel { background: var(--surface); color: var(--text); }
+    .btn-confirm { border-color: var(--accent) !important; background: var(--accent); color: #fff; }
+    [data-theme="dark"] .btn-confirm { color: #111827; }
 
     @media (min-width: 768px) {
-      .topbar-inner {
-        display: flex;
-        min-height: 68px;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 58px 0 0;
-      }
-      .topnav { margin-top: 0; }
-      main { width: min(calc(100% - 48px), 1180px); padding-top: 38px; }
-      .page-heading { margin-bottom: 26px; }
-      .summary-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .filters { grid-template-columns: minmax(240px, 1fr) 180px 150px 150px auto; align-items: end; }
-      .filter-footer { display: contents; }
-      .result-count { align-self: center; text-align: right; }
-      .site-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      main { width: min(calc(100% - 48px), 1200px); margin-top: 2rem; }
+      .card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
-    @media (min-width: 960px) {
-      .site-list { display: none; }
+    @media (min-width: 1152px) {
       .table-wrap { display: block; }
+      .card-list { display: none; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -339,103 +348,90 @@
 <body>
   <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题"><span id="themeIcon" aria-hidden="true">🌙</span></button>
 
-  <header class="topbar">
-    <div class="topbar-inner">
-      <p class="brand">Microsite Container</p>
-      <nav class="topnav" aria-label="管理导航">
-        <span class="account">{{ user.username }} · {{ '超级管理员' if user.role == 'super_admin' else '管理员' }}</span>
-        <a href="/admin/token">部署凭证</a>
-        {% if user.role == 'super_admin' %}<a href="/admin/users">用户管理</a>{% endif %}
-        <a href="/admin/logout">退出</a>
-      </nav>
-    </div>
+  <header>
+    <h1>Microsite Container</h1>
+    <nav aria-label="管理导航">
+      <span class="account">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
+      <a href="/admin/token">API Token</a>
+      {% if user.role == 'super_admin' %}<a href="/admin/users">用户管理</a>{% endif %}
+      <a href="/admin/logout">退出登录</a>
+    </nav>
   </header>
 
   <main>
-    <section class="page-heading" aria-labelledby="pageTitle">
-      <p class="eyebrow">DEPLOYED SITES</p>
-      <h1 id="pageTitle">站点管理</h1>
-      <p class="heading-copy">查看由 Codex、部署脚本或 CI 发布的站点。每个站点展示当前激活版本，并可导出完整前端资源和 Runtime Data。</p>
-    </section>
-
-    <section class="summary-row" aria-label="部署概览">
-      <div class="summary-card"><strong>{{ sites|length }}</strong><span>站点总数</span></div>
-      <div class="summary-card"><strong>{{ sites|selectattr('active_deployment_id')|list|length }}</strong><span>运行中</span></div>
-      <div class="summary-card"><strong>{{ sites|sum(attribute='file_count') or 0 }}</strong><span>当前版本文件</span></div>
-      <div class="summary-card"><strong>{{ sites|sum(attribute='runtime_document_count') or 0 }}</strong><span>Runtime Documents</span></div>
-    </section>
+    <div class="section-heading">
+      <div><h2>站点管理</h2><p>已部署站点及其当前激活版本</p></div>
+      <span class="site-count">共 {{ sites|length }} 个站点</span>
+    </div>
 
     {% if sites %}
-    <section class="filters" aria-label="站点筛选">
-      <div class="field"><label for="searchKeyword">关键词</label><input id="searchKeyword" type="search" placeholder="搜索标题或 slug"></div>
-      {% if user.role == 'super_admin' %}
-      <div class="field">
-        <label for="searchOwner">所有者</label>
-        <select id="searchOwner"><option value="">全部</option>{% for owner in owners %}<option value="{{ owner }}">{{ owner }}</option>{% endfor %}</select>
+    <div class="search-card">
+      <div class="search-row">
+        <div class="field field-keyword"><label for="searchKeyword">关键词（标题 / slug）</label><input id="searchKeyword" type="search" placeholder="输入标题或 slug 关键词…"></div>
+        {% if user.role == 'super_admin' %}
+        <div class="field"><label for="searchOwner">所有者</label><select id="searchOwner"><option value="">全部</option>{% for owner in owners %}<option value="{{ owner }}">{{ owner }}</option>{% endfor %}</select></div>
+        {% endif %}
+        <div class="field"><label for="searchFrom">部署时间从</label><input id="searchFrom" type="date"></div>
+        <div class="field"><label for="searchTo">到</label><input id="searchTo" type="date"></div>
+        <button class="btn-reset" id="resetFilters" type="button">重置</button>
+        <span class="search-count" id="resultCount"></span>
       </div>
-      {% endif %}
-      <div class="field"><label for="searchFrom">部署时间从</label><input id="searchFrom" type="date"></div>
-      <div class="field"><label for="searchTo">到</label><input id="searchTo" type="date"></div>
-      <div class="filter-footer"><button class="button" id="resetFilters" type="button">重置</button><span class="result-count" id="resultCount"></span></div>
-    </section>
-
-    <div class="site-list" id="siteCards">
-      {% for site in sites %}
-      {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
-      <article class="site-card site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
-        <div class="site-card-head">
-          <div><h2 class="site-title">{{ site.title }}</h2><span class="slug">{{ site.slug }}</span></div>
-          <span class="badge {{ 'active' if site.active_deployment_id else 'inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span>
-        </div>
-        <a class="site-url" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a>
-        <div class="site-meta">
-          <div class="meta-item"><span class="meta-label">当前版本</span><span class="meta-value">{{ site.active_deployment_id or '—' }}</span></div>
-          <div class="meta-item"><span class="meta-label">静态资源</span><span class="meta-value">{{ site.file_count or 0 }} 个 · {{ site.static_size_label }}</span></div>
-          <div class="meta-item"><span class="meta-label">Runtime Data</span><span class="meta-value">{{ site.runtime_document_count }} 个文档 · {{ site.runtime_version_count }} 个版本</span></div>
-          <div class="meta-item"><span class="meta-label">最近部署</span><span class="meta-value">{{ deployed_at[:16].replace('T', ' ') }}</span></div>
-          {% if user.role == 'super_admin' %}<div class="meta-item"><span class="meta-label">所有者</span><span class="meta-value">{{ site.owner_name or '—' }}</span></div>{% endif %}
-          <div class="meta-item"><span class="meta-label">预计导出</span><span class="meta-value">{{ site.export_size_label }}</span></div>
-        </div>
-        <div class="site-actions">
-          <a class="button" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a>
-          <button class="button primary download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
-        </div>
-      </article>
-      {% endfor %}
     </div>
 
     <div class="table-wrap">
       <table>
-        <thead><tr><th>站点</th><th>状态</th><th>当前部署</th><th>资源</th><th>Runtime Data</th>{% if user.role == 'super_admin' %}<th>所有者</th>{% endif %}<th>最近部署</th><th>操作</th></tr></thead>
+        <thead>
+          <tr><th class="title-col">标题</th><th class="url-col">Slug 链接</th><th class="status-col">状态</th><th class="deployment-col">当前部署</th><th class="resource-col">资源</th><th class="runtime-col">Runtime Data</th>{% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}<th class="deployed-col">部署时间</th><th class="actions-col">操作</th></tr>
+        </thead>
         <tbody>
           {% for site in sites %}
           {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
           <tr class="site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
-            <td><span class="table-title"><strong>{{ site.title }}</strong><a class="table-link" href="{{ site.url }}" target="_blank" rel="noopener">{{ site.slug }}</a></span></td>
-            <td><span class="badge {{ 'active' if site.active_deployment_id else 'inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></td>
-            <td><span class="slug">{{ site.active_deployment_id or '—' }}</span></td>
-            <td>{{ site.file_count or 0 }} 个 · {{ site.static_size_label }}</td>
-            <td>{{ site.runtime_document_count }} 个文档 · {{ site.runtime_version_count }} 个版本</td>
+            <td class="title-col"><span class="title-text" title="{{ site.title }}">{{ site.title }}</span></td>
+            <td><a class="site-link" href="{{ site.url }}" target="_blank" rel="noopener" title="{{ site.url }}">{{ site.slug }}</a></td>
+            <td><span class="status-badge {{ 'status-active' if site.active_deployment_id else 'status-inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></td>
+            <td><span class="deployment-id" title="{{ site.active_deployment_id or '' }}">{{ site.active_deployment_id or '—' }}</span></td>
+            <td>{{ site.file_count }} 个 · {{ site.static_size_label }}</td>
+            <td>{{ site.runtime_document_count }} 文档 · {{ site.runtime_version_count }} 版本</td>
             {% if user.role == 'super_admin' %}<td>{{ site.owner_name or '—' }}</td>{% endif %}
-            <td>{{ deployed_at[:16].replace('T', ' ') }}</td>
-            <td><div class="table-actions"><a class="button" href="{{ site.url }}" target="_blank" rel="noopener">打开</a><button class="button primary download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div></td>
+            <td class="ts">{{ deployed_at[:16].replace('T', ' ') }}</td>
+            <td class="actions-col"><div class="ops-cell"><a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开</a><button class="action-btn action-btn-download download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <div class="no-results" id="noResults">没有匹配的站点，请调整筛选条件。</div>
+
+    <div class="card-list">
+      {% for site in sites %}
+      {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
+      <article class="page-card site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
+        <div class="page-card-title"><span>{{ site.title }}</span><span class="status-badge {{ 'status-active' if site.active_deployment_id else 'status-inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></div>
+        <div class="page-card-link"><a href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a></div>
+        <div class="page-card-meta">
+          <span title="{{ site.active_deployment_id or '' }}">版本：{{ site.active_deployment_id or '—' }}</span>
+          <span>资源：{{ site.file_count }} 个 · {{ site.static_size_label }}</span>
+          <span>数据：{{ site.runtime_document_count }} 文档 · {{ site.runtime_version_count }} 版本</span>
+          <span>部署：{{ deployed_at[:16].replace('T', ' ') }}</span>
+          {% if user.role == 'super_admin' %}<span>所有者：{{ site.owner_name or '—' }}</span>{% endif %}
+          <span>预计导出：{{ site.export_size_label }}</span>
+        </div>
+        <div class="page-card-actions"><a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a><button class="action-btn action-btn-download download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div>
+      </article>
+      {% endfor %}
+    </div>
+    <div class="no-match" id="noResults">没有匹配的站点，请调整筛选条件。</div>
     {% else %}
     <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
   </main>
 
-  <div class="modal" id="largeDownloadModal" role="dialog" aria-modal="true" aria-labelledby="largeDownloadTitle">
+  <div class="modal-overlay" id="largeDownloadModal" role="dialog" aria-modal="true" aria-labelledby="largeDownloadTitle">
     <div class="modal-card">
-      <h2 id="largeDownloadTitle">导出包较大</h2>
+      <h3 id="largeDownloadTitle">导出包较大</h3>
       <p id="largeDownloadMessage"></p>
-      <p class="warning-note">ZIP 将包含当前激活部署的全部前端与资源文件、Runtime Data 当前值及服务端保留的版本历史，生成和下载可能需要一些时间。</p>
-      <div class="modal-actions"><button class="button" id="cancelLargeDownload" type="button">取消</button><button class="button primary" id="confirmLargeDownload" type="button">继续下载</button></div>
+      <p class="warning-note">ZIP 包含当前激活部署的全部前端资源、Runtime Data 当前值及保留的版本历史，生成和下载可能需要一些时间。</p>
+      <div class="modal-actions"><button class="btn-cancel" id="cancelLargeDownload" type="button">取消</button><button class="btn-confirm" id="confirmLargeDownload" type="button">继续下载</button></div>
     </div>
   </div>
 
