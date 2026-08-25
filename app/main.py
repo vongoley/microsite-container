@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from app.microsites import create_data_router, create_microsite_router, init_microsite_schema
+from app.runtime_data import create_runtime_router
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "html_store.db"
@@ -459,6 +460,26 @@ def get_api_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
     raise HTTPException(status_code=401, detail="Invalid API token")
 
 
+def get_runtime_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
+    """Return the active browser-session user for runtime data, or ``None``.
+
+    Runtime pages never receive deployment API tokens. Public documents may be
+    read anonymously, while writes are authorized with the existing HttpOnly
+    admin session cookie.
+    """
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    user_id = verify_session_token(token)
+    if not user_id:
+        return None
+    row = db.execute(
+        "SELECT id FROM users WHERE id = ? AND is_active = 1",
+        (user_id,),
+    ).fetchone()
+    return row["id"] if row else None
+
+
 MARKDOWN_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -558,6 +579,7 @@ app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.include_router(create_microsite_router(get_db, get_api_user))
 app.include_router(create_data_router(get_db))
+app.include_router(create_runtime_router(get_db, get_runtime_user))
 
 
 # ── Public: view shared page ──────────────────────────────────────────────────

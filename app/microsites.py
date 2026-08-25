@@ -23,6 +23,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from app.runtime_data import (
+    RuntimeConfigError,
+    apply_runtime_config,
+    init_runtime_schema,
+    load_runtime_config,
+)
+
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -147,6 +154,7 @@ def init_microsite_schema(db_path: Path) -> None:
                 ON deployment_files(blob_sha256);
             """
         )
+        init_runtime_schema(con)
         con.commit()
     finally:
         con.close()
@@ -523,6 +531,10 @@ def create_microsite_router(
                 409,
                 {"message": "Deployment has missing or corrupt blobs", "missing_blobs": missing_blobs},
             )
+        try:
+            load_runtime_config(db, deployment_id)
+        except RuntimeConfigError as exc:
+            raise HTTPException(400, f"Invalid microsite runtime config: {exc}") from exc
         db.execute(
             "UPDATE deployments SET state = 'ready', finalized_at = ? WHERE id = ? AND state = 'staging'",
             (_now(), deployment_id),
@@ -539,6 +551,18 @@ def create_microsite_router(
         owner_id: str = Depends(get_api_user),
     ):
         site = _site_for_actor(db, site_slug, owner_id)
+        deployment = db.execute(
+            "SELECT * FROM deployments WHERE id = ? AND site_id = ?",
+            (deployment_id, site["id"]),
+        ).fetchone()
+        if not deployment:
+            raise HTTPException(404, "Deployment not found")
+        if deployment["state"] not in ("ready", "active", "superseded"):
+            raise HTTPException(409, "Only a ready or superseded deployment can be activated")
+        try:
+            runtime_configs = load_runtime_config(db, deployment_id)
+        except RuntimeConfigError as exc:
+            raise HTTPException(409, f"Runtime data is incompatible with this deployment: {exc}") from exc
         try:
             db.execute("BEGIN IMMEDIATE")
             site = db.execute("SELECT * FROM sites WHERE id = ?", (site["id"],)).fetchone()
@@ -554,6 +578,19 @@ def create_microsite_router(
             if deployment["state"] not in ("ready", "superseded"):
                 raise HTTPException(409, "Only a ready or superseded deployment can be activated")
             now = _now()
+            try:
+                apply_runtime_config(
+                    db,
+                    site,
+                    deployment_id,
+                    runtime_configs,
+                    now=now,
+                )
+            except RuntimeConfigError as exc:
+                raise HTTPException(
+                    409,
+                    f"Runtime data is incompatible with this deployment: {exc}",
+                ) from exc
             db.execute(
                 "UPDATE deployments SET state = 'superseded' WHERE site_id = ? AND state = 'active'",
                 (site["id"],),

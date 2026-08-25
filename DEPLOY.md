@@ -29,6 +29,7 @@ cp .env.example .env
 ADMIN_PASSWORD_HASH=<sha256>
 SESSION_SECRET=<random secret>
 API_KEY=<random api key>
+COOKIE_SECURE=1
 MICROSITE_ACCEL_PREFIX=/_protected_microsite_blobs
 ```
 
@@ -88,12 +89,16 @@ certbot --nginx -d your-domain.com
 
 宿主机 `./data` 映射到容器 `/app/app/data`，包含：
 
-- `html_store.db`：控制面元数据
+- `html_store.db`：控制面元数据，以及 Runtime Data 当前值与版本历史
 - `microsites/blobs/`：内容寻址资源
 - `microsites/tmp/`：未完成上传的临时文件
 - `uploads/`：继承的单文件页面
 
 一致性备份需要同时保存 SQLite 和 `microsites/blobs/`。不要只备份数据库。
+
+Runtime Data 在 SQLite 中实时更新。生产备份应使用 SQLite 在线备份 API 或在短暂阻止写入
+期间复制数据库，避免直接复制正在写入的 WAL 数据库后得到不一致快照。恢复演练需要同时
+验证静态 deployment、活动指针和 Runtime Document revision。
 
 ## 安装 Skill
 

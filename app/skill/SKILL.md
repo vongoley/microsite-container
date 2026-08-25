@@ -50,6 +50,20 @@ place it in a directory as `index.html` and deploy that directory.
 SPA history fallback is enabled by default. Use `--no-spa-fallback` for sites that
 should return 404 for unknown extensionless paths.
 
+## Runtime data
+
+For data edited by the deployed page, use the platform Runtime Data capability instead
+of embedding deployment API tokens or rewriting HTML. Add `microsite.json` to the site
+directory, declare site-scoped documents under `runtimeData.documents`, and include any
+referenced JSON Schema and seed JSON files. The deploy command includes these files in
+the manifest automatically; finalize validates them and activation registers them.
+
+Browser code loads `/_microsite/sdk/v1.js`, calls
+`MicrositeData.document("document-key").get()`, then saves with the document object's
+`save(value)` method. Writes use the browser login session and optimistic revisions.
+Never put the deployment API key in site source code. Runtime seeds initialize only
+missing documents; redeployment does not overwrite saved runtime data.
+
 ## Inspect without publishing
 
 Generate and validate the local manifest:
