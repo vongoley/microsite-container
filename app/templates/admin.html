@@ -1,10 +1,10 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
-  <title>Microsite Container — 管理</title>
+  <title>站点管理 · Microsite Container</title>
   <script>
     (() => {
       const saved = localStorage.getItem("microsite-admin-theme");
@@ -14,100 +14,117 @@
   </script>
   <style>
     :root {
+      --black: #000;
+      --text: #111;
+      --surface: #fff;
       --bg: #f9fafb;
-      --text: #111111;
-      --muted: #6b7280;
-      --faint: #9ca3af;
-      --surface: #ffffff;
-      --surface-soft: #f9fafb;
       --surface-hover: #fafafa;
+      --surface-accent-hover: #fafafe;
       --border: #e5e7eb;
       --border-strong: #d1d5db;
+      --muted: #6b7280;
+      --faint: #9ca3af;
       --accent: #4f46e5;
-      --accent-hover: #4338ca;
+      --accent-strong: #4338ca;
+      --accent-dark: #3730a3;
+      --accent-link: #6d28d9;
       --accent-soft: #eef2ff;
+      --accent-soft-2: #ede9fe;
       --accent-border: #c7d2fe;
+      --accent-border-hover: #a5b4fc;
+      --neutral-soft: #f3f4f6;
+      --neutral-text: #374151;
+      --neutral-strong: #4b5563;
+      --success: #059669;
+      --success-text: #065f46;
+      --success-bg: #d1fae5;
+      --success-soft: #ecfdf5;
+      --success-border: #6ee7b7;
       --active-bg: #dcfce7;
       --active-text: #166534;
-      --inactive-bg: #f3f4f6;
-      --inactive-text: #6b7280;
+      --danger: #dc2626;
+      --danger-dark: #b91c1c;
+      --danger-bright: #f87171;
+      --danger-border: #fca5a5;
+      --danger-bg: #fef2f2;
+      --danger-soft: #fee2e2;
+      --danger-text: #991b1b;
       --warning-bg: #fef3c7;
       --warning-text: #92400e;
-      --overlay: rgba(0, 0, 0, .45);
-      --shadow: 0 20px 60px rgba(0, 0, 0, .25);
+      --info-bg: #dbeafe;
+      --info-text: #1e40af;
     }
 
     [data-theme="dark"] {
-      --bg: #111827;
+      --black: #000;
       --text: #f3f4f6;
-      --muted: #d1d5db;
-      --faint: #9ca3af;
       --surface: #1f2937;
-      --surface-soft: #18212f;
+      --bg: #111827;
       --surface-hover: #263244;
+      --surface-accent-hover: #263244;
       --border: #374151;
       --border-strong: #4b5563;
+      --muted: #d1d5db;
+      --faint: #9ca3af;
       --accent: #a5b4fc;
-      --accent-hover: #c7d2fe;
+      --accent-strong: #c7d2fe;
+      --accent-dark: #c7d2fe;
+      --accent-link: #c4b5fd;
       --accent-soft: #312e81;
+      --accent-soft-2: #3b3275;
       --accent-border: #6366f1;
+      --accent-border-hover: #818cf8;
+      --neutral-soft: #374151;
+      --neutral-text: #e5e7eb;
+      --neutral-strong: #d1d5db;
+      --success: #34d399;
+      --success-text: #bbf7d0;
+      --success-bg: #14532d;
+      --success-soft: #143f2b;
+      --success-border: #15803d;
       --active-bg: #14532d;
       --active-text: #bbf7d0;
-      --inactive-bg: #374151;
-      --inactive-text: #d1d5db;
+      --danger: #f87171;
+      --danger-dark: #fca5a5;
+      --danger-bright: #fca5a5;
+      --danger-border: #991b1b;
+      --danger-bg: #4c1d1d;
+      --danger-soft: #4c1d1d;
+      --danger-text: #fecaca;
       --warning-bg: #78350f;
       --warning-text: #fde68a;
-      --overlay: rgba(0, 0, 0, .62);
-      --shadow: 0 20px 60px rgba(0, 0, 0, .45);
+      --info-bg: #1e3a8a;
+      --info-text: #bfdbfe;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
     body {
-      min-height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: clamp(.9rem, .85rem + .25vw, 1rem);
+      min-height: 100dvh;
     }
-    button, input, select { font: inherit; }
-    button, a, input, select { -webkit-tap-highlight-color: transparent; }
-    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-      outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
-      outline-offset: 2px;
-    }
-
     header {
-      position: sticky;
-      top: 0;
-      z-index: 10;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: .875rem 5rem .875rem 1.5rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      min-height: 60px;
-      padding: .875rem 4.75rem .875rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      background: color-mix(in srgb, var(--surface) 94%, transparent);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
     }
-    header h1 { color: var(--accent); font-size: 1.1rem; font-weight: 600; }
-    header nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .25rem 1rem; }
-    header .account { color: var(--muted); font-size: .8rem; }
-    header a {
-      min-height: 32px;
-      color: var(--muted);
-      font-size: .8rem;
-      line-height: 32px;
-      text-decoration: none;
-    }
+    header h1 { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
+    header a { font-size: .875rem; color: var(--muted); text-decoration: none; }
     header a:hover { color: var(--text); }
+    main { max-width: 1200px; margin: 1rem auto; padding: 0 .5rem; }
 
     .theme-toggle {
       position: fixed;
       top: max(8px, env(safe-area-inset-top));
       right: max(12px, env(safe-area-inset-right));
-      z-index: 80;
+      z-index: 100;
       display: grid;
       width: 44px;
       height: 44px;
@@ -119,319 +136,551 @@
       cursor: pointer;
     }
 
-    main {
-      width: min(calc(100% - 32px), 1200px);
-      margin: 1rem auto;
-      padding-bottom: max(40px, calc(24px + env(safe-area-inset-bottom)));
-    }
-
-    .section-heading {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 1rem;
-      margin-bottom: 1rem;
-    }
-    .section-heading h2 { font-size: 1rem; font-weight: 600; }
-    .section-heading p { margin-top: .2rem; color: var(--muted); font-size: .8rem; }
-    .site-count { color: var(--faint); font-size: .8rem; white-space: nowrap; }
-
-    .search-card {
-      margin-bottom: 1rem;
-      padding: 1rem 1.25rem;
+    /* Upload card */
+    .upload-card {
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
-      background: var(--surface);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
     }
-    .search-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
-    .field { display: flex; flex-direction: column; gap: .2rem; }
-    .field-keyword { flex: 1 1 220px; }
-    .field label { padding-left: .1rem; color: var(--faint); font-size: .7rem; }
-    .field input, .field select {
-      min-height: 44px;
-      padding: .45rem .7rem;
-      border: 1px solid var(--border-strong);
-      border-radius: 6px;
-      outline: none;
-      background: var(--surface);
-      color: var(--text);
+    .upload-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+    .upload-layout { display: flex; gap: 1.5rem; }
+    .upload-left { flex: 3; display: flex; }
+    .upload-left .drop-zone { flex: 1; min-height: auto; }
+    .upload-right { flex: 2; display: flex; flex-direction: column; gap: .75rem; justify-content: space-between; }
+    .drop-zone {
+      border: 2px dashed var(--border-strong);
+      border-radius: 8px;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      color: var(--faint);
       font-size: .85rem;
-    }
-    .field-keyword input { width: 100%; min-width: 220px; }
-    .field input:focus, .field select:focus { border-color: var(--accent); }
-    .btn-reset {
-      min-height: 44px;
-      align-self: flex-end;
-      padding: .45rem .9rem;
-      border: 1px solid var(--border-strong);
-      border-radius: 6px;
-      background: var(--surface-soft);
-      color: var(--text);
       cursor: pointer;
-      font-size: .85rem;
+      transition: border-color .15s, background .15s;
+      min-height: 160px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
     }
-    .btn-reset:hover { background: var(--surface-hover); }
-    .search-count { align-self: flex-end; margin-left: auto; color: var(--faint); font-size: .8rem; line-height: 44px; }
-
-    .table-wrap { display: none; width: 100%; overflow-x: auto; border-radius: 8px; }
-    table {
+    .drop-zone:hover { border-color: var(--accent-border-hover); background: var(--surface-accent-hover); }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .drop-zone.has-file { border-color: var(--success-border); background: var(--success-soft); }
+    .drop-zone-icon { font-size: 2rem; line-height: 1; }
+    .drop-zone-text { font-size: .85rem; }
+    .file-name-display {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--success-text);
+      background: var(--success-bg);
+      border-radius: 4px;
+      padding: .25rem .6rem;
+      margin-top: .25rem;
+      word-break: break-all;
+      display: none;
+    }
+    .file-name-display.visible { display: inline-block; }
+    .upload-right input[type=text] {
+      padding: .5rem .75rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      font-size: .9rem;
+      outline: none;
       width: 100%;
-      min-width: 1180px;
-      table-layout: fixed;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      border-collapse: separate;
-      border-spacing: 0;
-      border-radius: 8px;
-      background: var(--surface);
     }
+    .upload-right input[type=text]:focus { border-color: var(--accent); }
+    input[type=file] { display: none; }
+    .btn-upload {
+      padding: .6rem 1.25rem;
+      background: var(--accent);
+      color: var(--surface);
+      border: none;
+      border-radius: 6px;
+      font-size: .9rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      align-self: flex-start;
+    }
+    .btn-upload:hover { background: var(--accent-strong); }
+
+    /* Table (desktop) */
+    .table-wrap { display: none; width: 100%; overflow-x: auto; border-radius: 8px; }
+    table { width: 100%; min-width: 1120px; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--surface); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
     th {
-      padding: .75rem 1rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface-soft);
-      color: var(--muted);
+      text-align: left;
       font-size: .8rem;
       font-weight: 600;
-      letter-spacing: .04em;
-      text-align: left;
+      color: var(--muted);
       text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: .75rem 1rem;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
     }
-    td { padding: .75rem 1rem; border-bottom: 1px solid var(--surface-soft); font-size: .86rem; vertical-align: middle; }
-    tr:last-child td { border-bottom: 0; }
+    td { padding: .75rem 1rem; font-size: .9rem; border-bottom: 1px solid var(--neutral-soft); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
     tr:hover td { background: var(--surface-hover); }
-    .title-col { width: 180px; overflow: hidden; }
-    .url-col { width: 190px; }
-    .status-col { width: 86px; }
-    .deployment-col { width: 205px; }
-    .resource-col { width: 125px; }
-    .runtime-col { width: 155px; }
-    .owner-col { width: 110px; }
-    .deployed-col { width: 145px; }
-    .actions-col { width: 150px; }
+    .badge {
+      display: inline-block;
+      font-family: monospace;
+      font-size: .8rem;
+      background: var(--accent-soft-2);
+      color: var(--accent-link);
+      padding: .1rem .45rem;
+      border-radius: 4px;
+    }
+    .link-cell { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+    .title-col, .owner-col { overflow: hidden; }
     .title-text {
       display: -webkit-box;
       max-height: 2.9em;
       overflow: hidden;
       overflow-wrap: anywhere;
+      word-break: break-word;
       line-height: 1.45;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
     }
-    .slug, .deployment-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; }
-    .deployment-id { display: block; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
-    .site-link { display: block; overflow: hidden; color: var(--accent); text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
-    .site-link:hover { text-decoration: underline; }
-    .ts { color: var(--faint); font-size: .8rem; white-space: nowrap; }
-    th.actions-col, td.actions-col { position: sticky; right: 0; box-shadow: -1px 0 0 var(--border); }
-    th.actions-col { z-index: 3; background: var(--surface-soft); }
+    .id-col { width: 165px; }
+    .slug-col { width: 250px; }
+    .visibility-col { width: 110px; }
+    .owner-col { width: 140px; }
+    .uploaded-col { width: 155px; }
+    .actions-col { width: 176px; }
+    .id-link, .slug-link {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .owner-text {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    th.actions-col, td.actions-col {
+      position: sticky;
+      right: 0;
+      box-shadow: -1px 0 0 var(--border);
+    }
+    th.actions-col { z-index: 3; background: var(--bg); }
     td.actions-col { z-index: 2; background: var(--surface); }
     tr:hover td.actions-col { background: var(--surface-hover); }
-
-    .status-badge {
-      display: inline-block;
-      padding: .12rem .45rem;
+    .copy-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; padding: 0;
+      border: none;
       border-radius: 4px;
-      font-size: .72rem;
-      white-space: nowrap;
+      background: none;
+      cursor: pointer;
+      color: var(--faint);
+      flex-shrink: 0;
+      vertical-align: middle;
     }
-    .status-active { background: var(--active-bg); color: var(--active-text); }
-    .status-inactive { background: var(--inactive-bg); color: var(--inactive-text); }
-
-    .ops-cell { display: flex; align-items: center; gap: .35rem; white-space: nowrap; }
+    .copy-btn svg { width: 14px; height: 14px; }
+    .copy-btn:hover { color: var(--accent); background: var(--neutral-soft); }
+    .copy-btn.copied { color: var(--success); background: none; }
+    .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; padding: 0;
+      border: 1px solid var(--border-strong);
+      border-radius: 5px;
+      background: var(--surface);
+      cursor: pointer;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .icon-btn svg { width: 15px; height: 15px; }
+    .icon-btn:hover { background: var(--neutral-soft); color: var(--accent); }
+    .icon-btn.copied { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
     .action-btn {
       display: inline-flex;
-      min-height: 44px;
       align-items: center;
       justify-content: center;
-      padding: .25rem .65rem;
-      border: 1px solid var(--border-strong);
-      border-radius: 4px;
-      background: var(--surface);
-      color: var(--text);
-      cursor: pointer;
+      min-height: 28px;
+      padding: .25rem .5rem;
       font-size: .8rem;
       line-height: 1;
-      text-decoration: none;
       white-space: nowrap;
+      text-decoration: none;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      color: var(--neutral-text);
+      border-radius: 4px;
+      cursor: pointer;
     }
-    .action-btn:hover { border-color: var(--faint); background: var(--surface-hover); }
-    .action-btn-download { border-color: var(--accent-border); color: var(--accent-hover); }
-    .action-btn-download:hover { border-color: var(--accent); background: var(--accent-soft); }
-    .action-btn[disabled] { opacity: .45; cursor: not-allowed; }
+    .action-btn:hover { background: var(--neutral-soft); border-color: var(--faint); }
+    .action-btn-download { color: var(--accent-strong); border-color: var(--accent-border); }
+    .action-btn-download:hover { color: var(--accent-dark); background: var(--accent-soft); border-color: var(--accent-border-hover); }
+    .action-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .action-btn-danger { color: var(--danger); border-color: var(--danger-border); }
+    .action-btn-danger:hover { color: var(--danger-dark); background: var(--danger-bg); border-color: var(--danger-bright); }
+    .empty { text-align: center; color: var(--faint); padding: 3rem 1rem; font-size: .9rem; }
+    .ts { color: var(--faint); font-size: .8rem; white-space: nowrap; }
+    .slug-empty { color: var(--border-strong); font-size: .8rem; }
 
-    .card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; }
-    .page-card {
-      padding: 1rem;
+    /* Search bar */
+    .search-card {
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .search-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .search-row .field { display: flex; flex-direction: column; gap: .2rem; }
+    .search-row label { font-size: .7rem; color: var(--faint); padding-left: .1rem; }
+    .search-row input, .search-row select {
+      padding: .45rem .7rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      font-size: .85rem;
+      outline: none;
       background: var(--surface);
     }
-    .page-card-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .5rem; font-size: .95rem; font-weight: 600; }
-    .page-card-title > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-    .page-card-link { display: flex; align-items: center; min-width: 0; margin-bottom: .75rem; }
-    .page-card-link a { min-width: 0; overflow: hidden; color: var(--accent); font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
-    .page-card-meta {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: .5rem .75rem;
-      padding: .75rem 0;
-      border-top: 1px solid var(--surface-soft);
-      color: var(--muted);
-      font-size: .78rem;
+    .search-row input:focus, .search-row select:focus { border-color: var(--accent); }
+    .search-row .field-keyword input { min-width: 220px; }
+    .search-row .field-keyword { flex: 1 1 220px; }
+    .btn-reset {
+      padding: .45rem .9rem;
+      font-size: .85rem;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      background: var(--bg);
+      cursor: pointer;
+      color: var(--neutral-text);
+      align-self: flex-end;
     }
-    .page-card-meta span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-reset:hover { background: var(--neutral-soft); }
+    .search-count { font-size: .8rem; color: var(--faint); align-self: flex-end; margin-left: auto; }
+    .no-match { text-align: center; color: var(--faint); padding: 2rem 1rem; font-size: .9rem; display: none; }
+
+    /* Visibility badge */
+    .vis-badge { display: inline-block; font-size: .72rem; padding: .12rem .45rem; border-radius: 4px; white-space: nowrap; }
+    .vis-public { background: var(--active-bg); color: var(--active-text); }
+    .vis-private { background: var(--danger-soft); color: var(--danger-text); }
+    .vis-password { background: var(--warning-bg); color: var(--warning-text); }
+    .vis-users_all { background: var(--info-bg); color: var(--info-text); }
+    .vis-users_specific { background: var(--accent-soft-2); color: var(--accent-link); }
+    .ops-cell { display: flex; gap: .3rem; align-items: center; flex-wrap: nowrap; }
+    .ops-cell > * { flex: 0 0 auto; }
+
+    /* Upload visibility controls */
+    .vis-control { padding: .5rem .75rem; border: 1px solid var(--border-strong); border-radius: 6px; font-size: .9rem; width: 100%; outline: none; }
+    .vis-control:focus { border-color: var(--accent); }
+
+    /* Custom visibility component (replaces native <select>) */
+    .vc { width: 100%; }
+    .vc-dd { position: relative; }
+    .vc-trigger {
+      display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+      width: 100%; padding: .55rem .75rem; border: 1px solid var(--border-strong); border-radius: 6px;
+      background: var(--surface); font-size: .9rem; cursor: pointer; color: var(--text); text-align: left;
+    }
+    .vc-trigger:hover { border-color: var(--accent-border-hover); }
+    .vc-dd.open .vc-trigger { border-color: var(--accent); }
+    .vc-arrow { color: var(--faint); font-size: .7rem; flex-shrink: 0; transition: transform .15s; }
+    .vc-dd.open .vc-arrow { transform: rotate(180deg); }
+    .vc-menu {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12); overflow: hidden; padding: .25rem;
+    }
+    .vc-dd.open .vc-menu { display: block; }
+    .vc-option { padding: .5rem .6rem; font-size: .9rem; border-radius: 5px; cursor: pointer; }
+    .vc-option:hover { background: var(--neutral-soft); }
+    .vc-option.selected { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+    .vc-panel { margin-top: .5rem; }
+    .vc-pw-row { display: flex; gap: .4rem; }
+    .vc-pw-row input {
+      flex: 1; padding: .5rem .7rem; border: 1px solid var(--border-strong); border-radius: 6px;
+      font-size: .9rem; outline: none; font-family: monospace;
+    }
+    .vc-pw-row input:focus { border-color: var(--accent); }
+    .vc-btn {
+      padding: .5rem .7rem; font-size: .8rem; white-space: nowrap;
+      border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); cursor: pointer; color: var(--neutral-text);
+    }
+    .vc-btn:hover { background: var(--neutral-soft); }
+    .vc-btn.done { background: var(--success-bg); border-color: var(--success-border); color: var(--success-text); }
+    .vc-pw-hint { font-size: .72rem; color: var(--faint); margin-top: .3rem; }
+    /* users_specific: left (available) / right (selected) two-column layout */
+    .vc-twocol { display: flex; gap: .6rem; }
+    .vc-col { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
+    .vc-col-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .4rem .6rem; border-bottom: 1px solid var(--border); font-size: .78rem; color: var(--muted); background: var(--bg);
+    }
+    .vc-clear { border: none; background: none; color: var(--danger); cursor: pointer; font-size: .78rem; padding: 0; }
+    .vc-clear:hover { text-decoration: underline; }
+    .vc-search {
+      margin: .4rem .5rem 0; padding: .4rem .6rem; border: 1px solid var(--border-strong); border-radius: 6px;
+      font-size: .82rem; outline: none;
+    }
+    .vc-search:focus { border-color: var(--accent); }
+    .vc-list { max-height: 170px; overflow-y: auto; padding: .3rem; }
+    .vc-list:empty::after { content: "无"; color: var(--border-strong); font-size: .8rem; display: block; padding: .5rem .4rem; }
+    .vc-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .4rem .55rem; font-size: .84rem; border-radius: 5px; cursor: pointer;
+    }
+    .vc-item:hover { background: var(--neutral-soft); }
+    .vc-item .vc-act { color: var(--accent); font-size: .9rem; flex-shrink: 0; }
+    .vc-item.sel .vc-act { color: var(--danger); }
+    .vc-empty-hint { padding: .5rem .55rem; font-size: .8rem; color: var(--faint); }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: color-mix(in srgb, var(--black) 45%, transparent);
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: var(--surface); border-radius: 12px; padding: 1.5rem;
+      width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    .modal-card-lg { max-width: 560px; }
+    .modal-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: .75rem; }
+    .modal-card p { font-size: .9rem; color: var(--neutral-strong); margin-bottom: 1rem; line-height: 1.5; }
+    .modal-card label { display: block; font-size: .8rem; color: var(--muted); margin: .75rem 0 .25rem; }
+    .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.25rem; }
+    .modal-actions button { padding: .5rem 1.1rem; min-height: 40px; border-radius: 6px; font-size: .9rem; cursor: pointer; border: 1px solid var(--border-strong); }
+    .btn-cancel { background: var(--surface); color: var(--neutral-text); }
+    .btn-cancel:hover { background: var(--neutral-soft); }
+    .modal-actions .btn-danger { background: var(--danger); color: var(--surface); border-color: var(--danger); }
+    .modal-actions .btn-danger:hover { background: var(--danger-dark); }
+    .modal-actions .btn-confirm { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+    .modal-actions .btn-confirm:hover { background: var(--accent-strong); }
+    @media (max-width: 768px) {
+      .modal-actions button { min-height: 44px; flex: 1; }
+    }
+
+    /* Mobile card list */
+    .card-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+    .page-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: .75rem;
+    }
+    .page-card-title {
+      font-weight: 600;
+      font-size: .95rem;
+      margin-bottom: .5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .page-card-title > span {
+      min-width: 0;
+      padding-right: .5rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .page-card-links { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .5rem; }
+    .page-card-links .link-cell a {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: .8rem;
+    }
+    .page-card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+    }
     .page-card-actions {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: .5rem;
       padding-top: .75rem;
-      border-top: 1px solid var(--surface-soft);
+      margin-top: .75rem;
+      border-top: 1px solid var(--neutral-soft);
     }
-    .page-card-actions .action-btn { width: 100%; }
+    .page-card-actions form { display: flex; }
+    .page-card-actions .action-btn {
+      width: 100%;
+      min-height: 36px;
+    }
 
-    .empty, .no-match {
-      padding: 3rem 1rem;
-      color: var(--faint);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface);
-      font-size: .9rem;
-      text-align: center;
-    }
-    .no-match { display: none; margin-top: 1rem; padding: 2rem 1rem; }
-
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-      background: var(--overlay);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-    }
-    .modal-overlay.open { display: flex; }
-    .modal-card { width: 100%; max-width: 420px; padding: 1.5rem; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
-    .modal-card h3 { margin-bottom: .75rem; font-size: 1.05rem; font-weight: 600; }
-    .modal-card p { margin-bottom: 1rem; color: var(--muted); font-size: .9rem; line-height: 1.5; }
-    .modal-card .warning-note { padding: .75rem; border-radius: 6px; background: var(--warning-bg); color: var(--warning-text); font-size: .8rem; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.25rem; }
-    .modal-actions button {
-      min-height: 44px;
-      padding: .5rem 1.1rem;
-      border: 1px solid var(--border-strong);
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: .9rem;
-    }
-    .btn-cancel { background: var(--surface); color: var(--text); }
-    .btn-confirm { border-color: var(--accent) !important; background: var(--accent); color: #fff; }
-    [data-theme="dark"] .btn-confirm { color: #111827; }
-
+    /* Responsive */
     @media (min-width: 768px) {
-      main { width: min(calc(100% - 48px), 1200px); margin-top: 2rem; }
+      main { padding: 0 1rem; margin: 2rem auto; }
       .card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .page-card { margin-bottom: 0; }
     }
 
     @media (min-width: 1152px) {
       .table-wrap { display: block; }
       .card-list { display: none; }
     }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; }
-    }
   </style>
 </head>
 <body>
   <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题"><span id="themeIcon" aria-hidden="true">🌙</span></button>
-
   <header>
     <h1>Microsite Container</h1>
-    <nav aria-label="管理导航">
-      <span class="account">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
-      <a href="/admin/token">API Token</a>
-      {% if user.role == 'super_admin' %}<a href="/admin/users">用户管理</a>{% endif %}
+    <nav style="display:flex;align-items:center;gap:1rem;">
+      <span style="font-size:.8rem;color:var(--muted);">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
+      <a href="/admin/token" style="font-size:.8rem;">API Token</a>
+      {% if user.role == 'super_admin' %}
+      <a href="/admin/users" style="font-size:.8rem;">用户管理</a>
+      {% endif %}
       <a href="/admin/logout">退出登录</a>
     </nav>
   </header>
-
+  {% macro status_badge(active) %}<span class="vis-badge {{ 'vis-public' if active else 'vis-private' }}">{{ '● 运行中' if active else '○ 未激活' }}</span>{% endmacro %}
+  {% set copy_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>{% endset %}
   <main>
-    <div class="section-heading">
-      <div><h2>站点管理</h2><p>已部署站点及其当前激活版本</p></div>
-      <span class="site-count">共 {{ sites|length }} 个站点</span>
-    </div>
-
     {% if sites %}
     <div class="search-card">
       <div class="search-row">
-        <div class="field field-keyword"><label for="searchKeyword">关键词（标题 / slug）</label><input id="searchKeyword" type="search" placeholder="输入标题或 slug 关键词…"></div>
+        <div class="field field-keyword">
+          <label for="s-keyword">关键词（标题 / slug）</label>
+          <input type="text" id="s-keyword" placeholder="输入标题或 slug 关键词…">
+        </div>
         {% if user.role == 'super_admin' %}
-        <div class="field"><label for="searchOwner">所有者</label><select id="searchOwner"><option value="">全部</option>{% for owner in owners %}<option value="{{ owner }}">{{ owner }}</option>{% endfor %}</select></div>
+        <div class="field">
+          <label for="s-owner">所有者</label>
+          <select id="s-owner">
+            <option value="">全部</option>
+            {% for o in owners %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select>
+        </div>
         {% endif %}
-        <div class="field"><label for="searchFrom">部署时间从</label><input id="searchFrom" type="date"></div>
-        <div class="field"><label for="searchTo">到</label><input id="searchTo" type="date"></div>
-        <button class="btn-reset" id="resetFilters" type="button">重置</button>
-        <span class="search-count" id="resultCount"></span>
+        <div class="field">
+          <label for="s-from">部署时间从</label>
+          <input type="date" id="s-from">
+        </div>
+        <div class="field">
+          <label for="s-to">到</label>
+          <input type="date" id="s-to">
+        </div>
+        <button type="button" class="btn-reset" onclick="resetSearch()">重置</button>
+        <span class="search-count" id="search-count"></span>
       </div>
     </div>
 
+    <!-- Desktop: table -->
     <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th class="title-col">标题</th><th class="url-col">Slug 链接</th><th class="status-col">状态</th><th class="deployment-col">当前部署</th><th class="resource-col">资源</th><th class="runtime-col">Runtime Data</th>{% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}<th class="deployed-col">部署时间</th><th class="actions-col">操作</th></tr>
-        </thead>
-        <tbody>
-          {% for site in sites %}
-          {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
-          <tr class="site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
-            <td class="title-col"><span class="title-text" title="{{ site.title }}">{{ site.title }}</span></td>
-            <td><a class="site-link" href="{{ site.url }}" target="_blank" rel="noopener" title="{{ site.url }}">{{ site.slug }}</a></td>
-            <td><span class="status-badge {{ 'status-active' if site.active_deployment_id else 'status-inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></td>
-            <td><span class="deployment-id" title="{{ site.active_deployment_id or '' }}">{{ site.active_deployment_id or '—' }}</span></td>
-            <td>{{ site.file_count }} 个 · {{ site.static_size_label }}</td>
-            <td>{{ site.runtime_document_count }} 文档 · {{ site.runtime_version_count }} 版本</td>
-            {% if user.role == 'super_admin' %}<td>{{ site.owner_name or '—' }}</td>{% endif %}
-            <td class="ts">{{ deployed_at[:16].replace('T', ' ') }}</td>
-            <td class="actions-col"><div class="ops-cell"><a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开</a><button class="action-btn action-btn-download download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <table id="sites-table">
+      <thead>
+        <tr>
+          <th>标题</th>
+          <th class="id-col">版本链接</th>
+          <th class="slug-col">Slug 链接</th>
+          <th class="visibility-col">状态</th>
+          {% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}
+          <th class="uploaded-col">部署时间</th>
+          <th class="actions-col">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for site in sites %}
+        {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
+        <tr class="page-row"
+            data-site-id="{{ site.id }}"
+            data-title="{{ site.title|lower }}"
+            data-slug="{{ site.slug|lower }}"
+            data-owner="{{ site.owner_name or '' }}"
+            data-date="{{ deployed_at[:10] }}">
+          <td class="title-col"><span class="title-text" title="{{ site.title }}">{{ site.title }}</span></td>
+          <td>
+            {% if site.active_deployment_id %}
+            <div class="link-cell">
+              <a class="id-link" href="/_deployments/{{ site.active_deployment_id }}/" target="_blank" title="/_deployments/{{ site.active_deployment_id }}/" style="font-size:.85rem;color:var(--accent);">{{ site.active_deployment_id }}</a>
+              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '/_deployments/{{ site.active_deployment_id }}/')">{{ copy_icon }}</button>
+            </div>
+            {% else %}<span class="slug-empty">—</span>{% endif %}
+          </td>
+          <td class="slug-col">
+            <div class="link-cell">
+              <a class="slug-link" href="{{ site.url }}" target="_blank" title="{{ site.url }}" style="font-size:.85rem;color:var(--accent-link);">{{ site.url }}</a>
+              <button class="copy-btn" title="复制链接" onclick="copyLink(this, '{{ site.url }}')">{{ copy_icon }}</button>
+            </div>
+          </td>
+          <td style="white-space:nowrap;">{{ status_badge(site.active_deployment_id) }}</td>
+          {% if user.role == 'super_admin' %}<td class="owner-col" style="font-size:.8rem;color:var(--muted);"><span class="owner-text" title="{{ site.owner_name or '—' }}">{{ site.owner_name or '—' }}</span></td>{% endif %}
+          <td class="ts">{{ deployed_at[:16].replace("T"," ") }}</td>
+          <td class="actions-col">
+            <div class="ops-cell">
+              <a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开</a>
+              <button type="button" class="action-btn action-btn-download download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     </div>
 
+    <!-- Mobile: card list -->
     <div class="card-list">
       {% for site in sites %}
       {% set deployed_at = site.activated_at or site.deployment_created_at or site.updated_at %}
-      <article class="page-card site-entry" data-site-id="{{ site.id }}" data-title="{{ site.title|lower }}" data-slug="{{ site.slug|lower }}" data-owner="{{ site.owner_name or '' }}" data-date="{{ deployed_at[:10] }}">
-        <div class="page-card-title"><span>{{ site.title }}</span><span class="status-badge {{ 'status-active' if site.active_deployment_id else 'status-inactive' }}">{{ '运行中' if site.active_deployment_id else '未激活' }}</span></div>
-        <div class="page-card-link"><a href="{{ site.url }}" target="_blank" rel="noopener">{{ site.url }}</a></div>
-        <div class="page-card-meta">
-          <span title="{{ site.active_deployment_id or '' }}">版本：{{ site.active_deployment_id or '—' }}</span>
-          <span>资源：{{ site.file_count }} 个 · {{ site.static_size_label }}</span>
-          <span>数据：{{ site.runtime_document_count }} 文档 · {{ site.runtime_version_count }} 版本</span>
-          <span>部署：{{ deployed_at[:16].replace('T', ' ') }}</span>
-          {% if user.role == 'super_admin' %}<span>所有者：{{ site.owner_name or '—' }}</span>{% endif %}
-          <span>预计导出：{{ site.export_size_label }}</span>
+      <div class="page-card page-row"
+           data-site-id="{{ site.id }}"
+           data-title="{{ site.title|lower }}"
+           data-slug="{{ site.slug|lower }}"
+           data-owner="{{ site.owner_name or '' }}"
+           data-date="{{ deployed_at[:10] }}">
+        <div class="page-card-title">
+          <span>{{ site.title }}</span>
+          {{ status_badge(site.active_deployment_id) }}
         </div>
-        <div class="page-card-actions"><a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a><button class="action-btn action-btn-download download-site" type="button" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button></div>
-      </article>
+        <div class="page-card-links">
+          {% if site.active_deployment_id %}
+          <div class="link-cell">
+            <a href="/_deployments/{{ site.active_deployment_id }}/" target="_blank" title="/_deployments/{{ site.active_deployment_id }}/" style="color:var(--accent);">{{ site.active_deployment_id }}</a>
+            <button class="copy-btn" title="复制版本链接" onclick="copyLink(this, '/_deployments/{{ site.active_deployment_id }}/')">{{ copy_icon }}</button>
+          </div>
+          {% endif %}
+          <div class="link-cell">
+            <a href="{{ site.url }}" target="_blank" title="{{ site.url }}" style="color:var(--accent-link);">{{ site.url }}</a>
+            <button class="copy-btn" title="复制站点链接" onclick="copyLink(this, '{{ site.url }}')">{{ copy_icon }}</button>
+          </div>
+        </div>
+        <div class="page-card-meta">
+          <span class="ts">{{ deployed_at[:16].replace("T"," ") }}</span>
+          <span class="ts">{{ site.file_count }} 文件 · {{ site.static_size_label }} · {{ site.runtime_document_count }} 数据文档</span>
+        </div>
+        <div class="page-card-actions">
+          <a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a>
+          <button type="button" class="action-btn action-btn-download download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
+        </div>
+      </div>
       {% endfor %}
     </div>
-    <div class="no-match" id="noResults">没有匹配的站点，请调整筛选条件。</div>
+    <div class="no-match" id="no-match">没有匹配的站点，试试调整搜索条件。</div>
     {% else %}
     <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
   </main>
 
-  <div class="modal-overlay" id="largeDownloadModal" role="dialog" aria-modal="true" aria-labelledby="largeDownloadTitle">
+  <div class="modal-overlay" id="large-download-modal" role="dialog" aria-modal="true" aria-labelledby="large-download-title">
     <div class="modal-card">
-      <h3 id="largeDownloadTitle">导出包较大</h3>
-      <p id="largeDownloadMessage"></p>
-      <p class="warning-note">ZIP 包含当前激活部署的全部前端资源、Runtime Data 当前值及保留的版本历史，生成和下载可能需要一些时间。</p>
-      <div class="modal-actions"><button class="btn-cancel" id="cancelLargeDownload" type="button">取消</button><button class="btn-confirm" id="confirmLargeDownload" type="button">继续下载</button></div>
+      <h3 id="large-download-title">导出包较大</h3>
+      <p id="large-download-message"></p>
+      <p>ZIP 将包含当前激活部署的全部前端资源、Runtime Data 当前值及保留的版本历史，生成和下载可能需要一些时间。</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="large-download-cancel">取消</button>
+        <button type="button" class="btn-confirm" id="large-download-confirm">继续下载</button>
+      </div>
     </div>
   </div>
 
@@ -440,7 +689,7 @@
     const LARGE_EXPORT_BYTES = {{ large_export_bytes }};
     const themeButton = document.getElementById("themeToggle");
     const themeIcon = document.getElementById("themeIcon");
-    const modal = document.getElementById("largeDownloadModal");
+    const largeDownloadModal = document.getElementById("large-download-modal");
     let pendingDownloadUrl = "";
 
     function updateThemeButton() {
@@ -448,6 +697,7 @@
       themeIcon.textContent = dark ? "☀️" : "🌙";
       themeButton.setAttribute("aria-label", dark ? "切换为浅色主题" : "切换为深色主题");
     }
+
     themeButton.addEventListener("click", () => {
       const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
       document.documentElement.dataset.theme = next;
@@ -456,74 +706,123 @@
     });
     updateThemeButton();
 
+    const COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+    function plainCopy(value) {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
+    function flashCopied(button) {
+      const original = button.innerHTML || COPY_SVG;
+      button.innerHTML = CHECK_SVG;
+      button.classList.add("copied");
+      setTimeout(() => {
+        button.innerHTML = original;
+        button.classList.remove("copied");
+      }, 1500);
+    }
+
+    function copyLink(button, path) {
+      plainCopy(location.origin + path);
+      flashCopied(button);
+    }
+
     function formatBytes(bytes) {
       if (bytes < 1024) return `${bytes} B`;
       const units = ["KB", "MB", "GB", "TB"];
       let value = bytes / 1024;
       let unit = units[0];
-      for (let index = 1; value >= 1024 && index < units.length; index += 1) { value /= 1024; unit = units[index]; }
+      for (let index = 1; value >= 1024 && index < units.length; index += 1) {
+        value /= 1024;
+        unit = units[index];
+      }
       return `${value.toFixed(1)} ${unit}`;
     }
-    function closeDownloadModal() { modal.classList.remove("open"); pendingDownloadUrl = ""; }
-    document.querySelectorAll(".download-site").forEach((button) => {
+
+    function closeLargeDownload() {
+      largeDownloadModal.classList.remove("open");
+      pendingDownloadUrl = "";
+    }
+
+    document.querySelectorAll(".download-site").forEach(button => {
       button.addEventListener("click", () => {
         const size = Number(button.dataset.size || 0);
         const url = button.dataset.url;
         if (size > LARGE_EXPORT_BYTES) {
           pendingDownloadUrl = url;
-          document.getElementById("largeDownloadMessage").textContent = `「${button.dataset.title}」的导出内容预计为 ${formatBytes(size)}，超过 50 MB。是否继续？`;
-          modal.classList.add("open");
-          document.getElementById("cancelLargeDownload").focus();
+          document.getElementById("large-download-message").textContent =
+            `「${button.dataset.title}」的导出内容预计为 ${formatBytes(size)}，超过 50 MB。是否继续？`;
+          largeDownloadModal.classList.add("open");
+          document.getElementById("large-download-cancel").focus();
           return;
         }
         window.location.assign(url);
       });
     });
-    document.getElementById("cancelLargeDownload").addEventListener("click", closeDownloadModal);
-    document.getElementById("confirmLargeDownload").addEventListener("click", () => {
+
+    document.getElementById("large-download-cancel").addEventListener("click", closeLargeDownload);
+    document.getElementById("large-download-confirm").addEventListener("click", () => {
       const url = pendingDownloadUrl;
-      closeDownloadModal();
+      closeLargeDownload();
       if (url) window.location.assign(url);
     });
-    modal.addEventListener("click", (event) => { if (event.target === modal) closeDownloadModal(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDownloadModal(); });
+    largeDownloadModal.addEventListener("click", event => {
+      if (event.target === largeDownloadModal) closeLargeDownload();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") closeLargeDownload();
+    });
 
-    const keyword = document.getElementById("searchKeyword");
-    const owner = document.getElementById("searchOwner");
-    const from = document.getElementById("searchFrom");
-    const to = document.getElementById("searchTo");
-    const resultCount = document.getElementById("resultCount");
-    const noResults = document.getElementById("noResults");
-    function applyFilters() {
-      if (!keyword) return;
-      const query = keyword.value.trim().toLowerCase();
-      const ownerValue = owner ? owner.value : "";
-      const visibleSiteIds = new Set();
-      const allSiteIds = new Set();
-      document.querySelectorAll(".site-entry").forEach((entry) => {
-        const matches = (!query || entry.dataset.title.includes(query) || entry.dataset.slug.includes(query))
-          && (!ownerValue || entry.dataset.owner === ownerValue)
-          && (!from.value || entry.dataset.date >= from.value)
-          && (!to.value || entry.dataset.date <= to.value);
-        entry.style.display = matches ? "" : "none";
-        allSiteIds.add(entry.dataset.siteId);
-        if (matches) visibleSiteIds.add(entry.dataset.siteId);
+    const sKeyword = document.getElementById("s-keyword");
+    const sOwner = document.getElementById("s-owner");
+    const sFrom = document.getElementById("s-from");
+    const sTo = document.getElementById("s-to");
+    const searchCount = document.getElementById("search-count");
+    const noMatch = document.getElementById("no-match");
+
+    function applyFilter() {
+      if (!sKeyword) return;
+      const keyword = sKeyword.value.trim().toLowerCase();
+      const owner = sOwner ? sOwner.value : "";
+      const from = sFrom.value;
+      const to = sTo.value;
+      const visibleSites = new Set();
+      const allSites = new Set();
+
+      document.querySelectorAll(".page-row").forEach(row => {
+        const matches = (!keyword || row.dataset.title.includes(keyword) || row.dataset.slug.includes(keyword))
+          && (!owner || row.dataset.owner === owner)
+          && (!from || row.dataset.date >= from)
+          && (!to || row.dataset.date <= to);
+        row.style.display = matches ? "" : "none";
+        allSites.add(row.dataset.siteId);
+        if (matches) visibleSites.add(row.dataset.siteId);
       });
-      resultCount.textContent = `显示 ${visibleSiteIds.size} / ${allSiteIds.size} 个站点`;
-      noResults.style.display = visibleSiteIds.size ? "none" : "block";
+
+      searchCount.textContent = `显示 ${visibleSites.size} / ${allSites.size} 个站点`;
+      noMatch.style.display = visibleSites.size ? "none" : "block";
     }
-    function resetFilters() {
-      keyword.value = "";
-      if (owner) owner.value = "";
-      from.value = "";
-      to.value = "";
-      applyFilters();
+
+    function resetSearch() {
+      sKeyword.value = "";
+      if (sOwner) sOwner.value = "";
+      sFrom.value = "";
+      sTo.value = "";
+      applyFilter();
     }
-    if (keyword) {
-      [keyword, from, to].forEach((element) => element.addEventListener("input", applyFilters));
-      if (owner) owner.addEventListener("change", applyFilters);
-      document.getElementById("resetFilters").addEventListener("click", resetFilters);
-      applyFilters();
+
+    if (sKeyword) {
+      [sKeyword, sFrom, sTo].forEach(element => element.addEventListener("input", applyFilter));
+      if (sOwner) sOwner.addEventListener("change", applyFilter);
+      applyFilter();
     }
   </script>
 </body>
