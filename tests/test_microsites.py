@@ -218,10 +218,14 @@ def test_skill_cli_builds_manifest(tmp_path):
     (tmp_path / "index.html").write_text("<h1>Hello</h1>", encoding="utf-8")
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "data.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
+    (tmp_path / ".microsite-origin.json").write_text(
+        json.dumps({"slug": "local-only"}), encoding="utf-8"
+    )
     manifest, sources = deploy_cli.build_manifest(tmp_path, "index.html", True)
     assert len(manifest["files"]) == 2
     assert manifest["entrypoint"] == "index.html"
     assert len(sources) == 2
+    assert ".microsite-origin.json" not in {item["path"] for item in manifest["files"]}
 
 
 def test_skill_cli_runs_complete_deployment_workflow(client, tmp_path, monkeypatch):

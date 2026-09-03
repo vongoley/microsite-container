@@ -22,7 +22,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 CONFIG_PATH = Path.home() / ".config" / "microsite-container" / "credentials.env"
 EXCLUDED_DIRS = {".git", "__pycache__"}
-EXCLUDED_FILES = {".DS_Store"}
+EXCLUDED_FILES = {".DS_Store", ".microsite-origin.json"}
 SOURCE_EXCLUDED_DIRS = EXCLUDED_DIRS | {
     ".mypy_cache",
     ".next",
