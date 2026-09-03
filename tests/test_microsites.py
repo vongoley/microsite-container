@@ -213,6 +213,93 @@ def test_skill_cli_runs_complete_deployment_workflow(client, tmp_path, monkeypat
     assert client.get("/sites/skill-site/audio/sample.mp3").content == b"audio bytes"
 
 
+def test_skill_cli_runtime_commands_use_scoped_token_and_revision(tmp_path, monkeypatch):
+    module_path = Path(__file__).parents[1] / "app" / "skill" / "deploy.py"
+    spec = importlib.util.spec_from_file_location("microsite_runtime_cli", module_path)
+    deploy_cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deploy_cli)
+    value_path = tmp_path / "latest.json"
+    value_path.write_text(json.dumps({"as_of": "2026-09-03"}), encoding="utf-8")
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_runtime_config",
+        lambda _explicit=None: ("https://microsites.example.com", "writer-token"),
+    )
+    calls = []
+
+    def fake_runtime_json(base_url, token, method, path, body=None, *, revision=None):
+        calls.append((base_url, token, method, path, body, revision))
+        if method == "GET":
+            return {"value": {"old": True}, "revision": 7}
+        return {"value": body["value"], "revision": 8}
+
+    monkeypatch.setattr(deploy_cli, "runtime_json", fake_runtime_json)
+    result = deploy_cli.command_runtime_put(
+        Namespace(
+            slug="Investment-Report",
+            document="latest-analysis",
+            file=str(value_path),
+            revision=None,
+            token=None,
+        )
+    )
+
+    assert result["revision"] == 8
+    assert calls[0][2:] == (
+        "GET",
+        "/api/runtime/sites/investment-report/documents/latest-analysis",
+        None,
+        None,
+    )
+    assert calls[1][2:] == (
+        "PUT",
+        "/api/runtime/sites/investment-report/documents/latest-analysis",
+        {"value": {"as_of": "2026-09-03"}},
+        7,
+    )
+
+
+def test_skill_cli_runtime_token_create_uses_deployment_credentials(monkeypatch):
+    module_path = Path(__file__).parents[1] / "app" / "skill" / "deploy.py"
+    spec = importlib.util.spec_from_file_location("microsite_writer_token_cli", module_path)
+    deploy_cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deploy_cli)
+    monkeypatch.setattr(
+        deploy_cli,
+        "load_config",
+        lambda: ("https://microsites.example.com", "deployment-token"),
+    )
+    captured = {}
+
+    def fake_api_json(base_url, api_key, method, path, body=None):
+        captured.update(
+            base_url=base_url,
+            api_key=api_key,
+            method=method,
+            path=path,
+            body=body,
+        )
+        return {"token": "mcw_secret"}
+
+    monkeypatch.setattr(deploy_cli, "api_json", fake_api_json)
+    result = deploy_cli.command_runtime_token_create(
+        Namespace(
+            slug="investment-report",
+            document="latest-analysis",
+            name="daily-job",
+        )
+    )
+
+    assert result == {"token": "mcw_secret"}
+    assert captured == {
+        "base_url": "https://microsites.example.com",
+        "api_key": "deployment-token",
+        "method": "POST",
+        "path": "/api/runtime/sites/investment-report/documents/latest-analysis/writer-tokens",
+        "body": {"name": "daily-job"},
+    }
+
+
 def test_real_vietnamese_page_full_deployment(client):
     source = os.environ.get("VIETNAMESE_LEARNING_HTML")
     if not source:

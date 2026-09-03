@@ -199,3 +199,92 @@ def test_large_site_estimate_triggers_confirmation_threshold(admin_client):
     sizes = [int(value) for value in re.findall(r'data-size="(\d+)"', response.text)]
     assert sizes and max(sizes) > main.SITE_EXPORT_WARNING_BYTES
     assert "导出包较大" in response.text
+
+
+def test_document_scoped_writer_token_can_update_and_be_revoked(admin_client):
+    client, db_path, deploy_token, _owner_id = admin_client
+    deploy_runtime_site(client, deploy_token)
+    deploy_headers = {"Authorization": f"Bearer {deploy_token}"}
+
+    created = client.post(
+        "/api/runtime/sites/export-site/documents/settings/writer-tokens",
+        headers=deploy_headers,
+        json={"name": "daily-investment-report"},
+    )
+    assert created.status_code == 201, created.text
+    writer = created.json()
+    assert writer["token"].startswith("mcw_")
+    assert writer["document"] == "settings"
+
+    con = sqlite3.connect(db_path)
+    stored = con.execute(
+        "SELECT token_hash, token_prefix FROM runtime_writer_tokens WHERE id = ?",
+        (writer["id"],),
+    ).fetchone()
+    con.close()
+    assert stored is not None
+    assert stored[0] == main.runtime_token_digest(writer["token"])
+    assert stored[0] != writer["token"]
+    assert stored[1] == writer["token_prefix"]
+
+    con = sqlite3.connect(db_path)
+    other_id = "runtime-token-outsider"
+    con.execute(
+        """
+        INSERT INTO users (id, username, password_hash, role, created_at, is_active)
+        VALUES (?, 'runtime-outsider', ?, 'admin', '2026-09-03T00:00:00+00:00', 1)
+        """,
+        (other_id, main.hash_password("password")),
+    )
+    con.execute(
+        """
+        INSERT INTO user_tokens (id, user_id, token, name, created_at, is_active)
+        VALUES ('outsider-token-id', ?, 'outsider-deploy-token', 'tests',
+                '2026-09-03T00:00:00+00:00', 1)
+        """,
+        (other_id,),
+    )
+    con.commit()
+    con.close()
+    forbidden = client.post(
+        "/api/runtime/sites/export-site/documents/settings/writer-tokens",
+        headers={"Authorization": "Bearer outsider-deploy-token"},
+        json={"name": "should-not-exist"},
+    )
+    assert forbidden.status_code == 403
+
+    client.cookies.clear()
+    writer_headers = {
+        "Authorization": f"Bearer {writer['token']}",
+        "If-Match": '"rev-1"',
+    }
+    updated = client.put(
+        "/api/runtime/sites/export-site/documents/settings",
+        headers=writer_headers,
+        json={"value": {"as_of": "2026-09-03", "signal": "hold"}},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["revision"] == 2
+
+    listed = client.get(
+        "/api/runtime/sites/export-site/writer-tokens",
+        headers=deploy_headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()[0]["token_prefix"] == writer["token_prefix"]
+    assert "token" not in listed.json()[0]
+
+    revoked = client.delete(
+        f"/api/runtime/sites/export-site/writer-tokens/{writer['id']}",
+        headers=deploy_headers,
+    )
+    assert revoked.status_code == 200
+    denied = client.put(
+        "/api/runtime/sites/export-site/documents/settings",
+        headers={
+            "Authorization": f"Bearer {writer['token']}",
+            "If-Match": '"rev-2"',
+        },
+        json={"value": {"as_of": "2026-09-04"}},
+    )
+    assert denied.status_code == 401

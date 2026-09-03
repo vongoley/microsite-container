@@ -17,12 +17,14 @@ Microsite Container 从 HTML Container 演进而来，但两者定位不同：HT
 - 静态资源服务：支持 MIME、ETag、Range、跨域资源访问和 SPA fallback
 - Nginx 数据面：可通过 `X-Accel-Redirect` 将文件传输卸载给 Nginx
 - Runtime Data：微站点通过统一 SDK 读写站点级 JSON Document，支持 Schema、版本冲突和历史留存
+- 自动数据更新：为服务器 cron/worker 签发单站点、单 Document 的机器写入 Token，无需重部署前端
 - 站点管理后台：集中查看当前激活部署，并导出完整站点资源与 Runtime Data ZIP
 - Codex/Claude Skill：扫描目录、生成 manifest、上传缺失资源、finalize 并 activate
 - 旧单文件接口暂时保留，便于迁移；新站点应使用 `/api/sites` 接口
 
-静态文件数据面仍是公开访问；API Token 只保护创建和发布操作。不要把私密资源直接放进
-deployment。Runtime Data 可以声明为公开读取或仅 owner 读取，写入始终需要浏览器登录会话。
+静态文件数据面仍是公开访问；部署 API Token 保护创建、发布和 Runtime Writer Token 管理。
+不要把私密资源直接放进 deployment。Runtime Data 可以声明为公开读取或仅 owner 读取；
+写入使用浏览器登录会话，或绑定到单个站点和 Document 的机器写入 Token。
 
 ## 架构
 
@@ -35,8 +37,8 @@ FastAPI + SQLite                         控制面
       ▼
 content-addressed local blobs + Nginx   数据面
 
-browser Runtime SDK
-      │  站点级 JSON Document、登录会话、revision
+browser Runtime SDK / scheduled worker
+      │  登录会话或 scoped writer token、revision
       ▼
 FastAPI Runtime Data API + SQLite       可变数据面
 ```
@@ -212,7 +214,7 @@ training-calendar/
 
 - `scope: "site"`：所有终端读取同一份站点数据
 - `read: "public" | "owner"`
-- `write: "owner"`：owner 或 super admin 使用浏览器登录会话写入
+- `write: "owner"`：owner/super admin 使用浏览器登录会话，或受限机器 Token 写入
 - 可选 JSON Schema 和 `schemaVersion`
 - 可选 `seed`：仅在文档尚不存在时初始化；重新部署不会覆盖已保存数据
 - `revision` 乐观锁；过期写入返回 `409 Conflict`
@@ -281,6 +283,40 @@ Content-Type: application/json
 
 GET 返回 `ETag: "rev-N"` 和当前 `revision`。新建但尚未 seed 的文档返回 `value: null`、
 `revision: 0`；第一次 PUT 必须携带 `If-Match: "rev-0"`。
+
+### 服务器定时更新
+
+需要每日更新行情或报告数据时，前端只部署一次。计算脚本在服务器 cron、systemd timer、CI、
+云函数或独立 worker 中运行，然后使用精确绑定到一个站点和一个 Document 的 Writer Token
+更新 Runtime Data。平台只保存 Token 的 SHA-256 摘要，明文只在创建时返回一次。
+
+```bash
+# 使用部署凭证创建最小权限 Token，并安全保存为 mode-0600 环境文件
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime-token create \
+  --slug investment-report --document latest-analysis \
+  --name daily-market-job \
+  --save-token /secure/path/investment-report-runtime.env
+
+# 定时任务生成 latest.json 后发布；CLI 自动读取当前 revision 并发送 If-Match
+set -a
+. /secure/path/investment-report-runtime.env
+set +a
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime put \
+  --slug investment-report --document latest-analysis \
+  --file /srv/investment-report/latest.json
+```
+
+Writer Token 不能部署代码，也不能写入其他站点或 Document。撤销与审计命令：
+
+```bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime-token list \
+  --slug investment-report
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime-token revoke \
+  --slug investment-report --token-id TOKEN_ID
+```
+
+Microsite Container 不执行 deployment 中携带的 Python/Node 文件，也不内置任意代码调度器；
+任务隔离、第三方密钥、重试、日志和告警由独立 worker 或宿主机调度器负责。
 
 代码回滚与数据回滚相互独立：激活旧 deployment 会恢复旧前端代码及配置，但不会覆盖当前
 Runtime Data。激活前会使用目标 deployment 的 Schema 验证现有数据；不兼容时拒绝激活，

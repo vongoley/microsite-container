@@ -7,9 +7,11 @@ browser clients through a small, reusable SDK.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -49,8 +51,26 @@ class RuntimeDocumentConfig:
     seed_json: str | None
 
 
+@dataclass(frozen=True)
+class RuntimeActor:
+    """Authenticated runtime actor, optionally restricted to one document."""
+
+    user_id: str
+    site_id: str | None = None
+    document_key: str | None = None
+    token_id: str | None = None
+
+
 class RuntimeDocumentWrite(BaseModel):
     value: Any
+
+
+class RuntimeWriterTokenCreate(BaseModel):
+    name: str = "scheduled-writer"
+
+
+def runtime_token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def init_runtime_schema(db: sqlite3.Connection) -> None:
@@ -93,6 +113,23 @@ def init_runtime_schema(db: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_site_document_versions_recent
             ON site_document_versions(site_id, document_key, revision DESC);
+
+        CREATE TABLE IF NOT EXISTS runtime_writer_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            document_key TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            token_prefix TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_runtime_writer_tokens_site
+            ON runtime_writer_tokens(site_id, document_key, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_runtime_writer_tokens_hash
+            ON runtime_writer_tokens(token_hash);
         """
     )
 
@@ -421,20 +458,49 @@ def _runtime_site_config(
     return row
 
 
-def _actor_is_owner(db: sqlite3.Connection, config: sqlite3.Row, actor_id: str | None) -> bool:
+def _actor_user_id(actor: str | RuntimeActor | None) -> str | None:
+    return actor.user_id if isinstance(actor, RuntimeActor) else actor
+
+
+def _actor_is_owner(
+    db: sqlite3.Connection,
+    config: sqlite3.Row,
+    actor: str | RuntimeActor | None,
+) -> bool:
+    actor_id = _actor_user_id(actor)
     if not actor_id:
         return False
+    if isinstance(actor, RuntimeActor):
+        if actor.site_id is not None and actor.site_id != config["site_id"]:
+            return False
+        if actor.document_key is not None and actor.document_key != config["document_key"]:
+            return False
     if actor_id == config["owner_id"]:
         return True
-    actor = db.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
-    return bool(actor and actor["role"] == "super_admin")
+    actor_row = db.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
+    return bool(actor_row and actor_row["role"] == "super_admin")
 
 
-def _require_owner(db: sqlite3.Connection, config: sqlite3.Row, actor_id: str | None) -> None:
-    if not actor_id:
+def _require_owner(
+    db: sqlite3.Connection,
+    config: sqlite3.Row,
+    actor: str | RuntimeActor | None,
+) -> None:
+    if not actor:
         raise HTTPException(401, "Login required to update runtime data")
-    if not _actor_is_owner(db, config, actor_id):
+    if not _actor_is_owner(db, config, actor):
         raise HTTPException(403, "Not allowed to update this site's runtime data")
+
+
+def _site_for_actor(db: sqlite3.Connection, site_slug: str, actor_id: str) -> sqlite3.Row:
+    site = db.execute("SELECT * FROM sites WHERE slug = ?", (site_slug,)).fetchone()
+    if not site:
+        raise HTTPException(404, "Site not found")
+    if site["owner_id"] != actor_id:
+        actor = db.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
+        if not actor or actor["role"] != "super_admin":
+            raise HTTPException(403, "Not allowed to manage this site")
+    return site
 
 
 def _config_from_row(row: sqlite3.Row) -> RuntimeDocumentConfig:
@@ -499,6 +565,7 @@ def _document_payload(
 def create_runtime_router(
     get_db: Callable,
     get_runtime_user: Callable,
+    get_api_user: Callable | None = None,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -515,11 +582,11 @@ def create_runtime_router(
         site_slug: str,
         document_key: str,
         db: sqlite3.Connection = Depends(get_db),
-        actor_id: str | None = Depends(get_runtime_user),
+        actor: str | RuntimeActor | None = Depends(get_runtime_user),
     ):
         config = _runtime_site_config(db, site_slug, document_key)
-        if config["read_policy"] == "owner" and not _actor_is_owner(db, config, actor_id):
-            if not actor_id:
+        if config["read_policy"] == "owner" and not _actor_is_owner(db, config, actor):
+            if not actor:
                 raise HTTPException(401, "Login required to read runtime data")
             raise HTTPException(403, "Not allowed to read this site's runtime data")
         payload, revision = _document_payload(db, config)
@@ -535,10 +602,10 @@ def create_runtime_router(
         body: RuntimeDocumentWrite,
         request: Request,
         db: sqlite3.Connection = Depends(get_db),
-        actor_id: str | None = Depends(get_runtime_user),
+        actor: str | RuntimeActor | None = Depends(get_runtime_user),
     ):
         config = _runtime_site_config(db, site_slug, document_key)
-        _require_owner(db, config, actor_id)
+        _require_owner(db, config, actor)
         expected_revision = _parse_if_match(request.headers.get("if-match"))
 
         try:
@@ -547,7 +614,7 @@ def create_runtime_router(
             # active declaration so a concurrent deployment cannot be followed by
             # a write validated against its predecessor's schema.
             config = _runtime_site_config(db, site_slug, document_key)
-            _require_owner(db, config, actor_id)
+            _require_owner(db, config, actor)
             try:
                 value_json = _validate_document_value(body.value, _config_from_row(config))
             except RuntimeConfigError as exc:
@@ -591,7 +658,7 @@ def create_runtime_router(
                     new_revision,
                     config["schema_version"],
                     now,
-                    actor_id,
+                    _actor_user_id(actor),
                 ),
             )
             db.execute(
@@ -608,7 +675,7 @@ def create_runtime_router(
                     value_json,
                     config["schema_version"],
                     now,
-                    actor_id,
+                    _actor_user_id(actor),
                 ),
             )
             if MAX_VERSIONS > 0:
@@ -633,5 +700,93 @@ def create_runtime_router(
             payload,
             headers={"ETag": _etag(revision), "Cache-Control": "no-store"},
         )
+
+    if get_api_user is not None:
+        @router.post(
+            "/api/runtime/sites/{site_slug}/documents/{document_key}/writer-tokens",
+            status_code=201,
+        )
+        async def create_runtime_writer_token(
+            site_slug: str,
+            document_key: str,
+            body: RuntimeWriterTokenCreate,
+            db: sqlite3.Connection = Depends(get_db),
+            actor_id: str = Depends(get_api_user),
+        ):
+            site = _site_for_actor(db, site_slug, actor_id)
+            config = _runtime_site_config(db, site_slug, document_key)
+            name = body.name.strip() or "scheduled-writer"
+            if len(name) > 120:
+                raise HTTPException(422, "Writer token name cannot exceed 120 characters")
+            token_id = secrets.token_hex(8)
+            token = f"mcw_{secrets.token_urlsafe(32)}"
+            now = datetime.now(timezone.utc).isoformat()
+            db.execute(
+                """
+                INSERT INTO runtime_writer_tokens
+                    (id, user_id, site_id, document_key, token_hash, token_prefix, name, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    token_id,
+                    actor_id,
+                    site["id"],
+                    config["document_key"],
+                    runtime_token_digest(token),
+                    token[:12],
+                    name,
+                    now,
+                ),
+            )
+            db.commit()
+            return {
+                "id": token_id,
+                "name": name,
+                "site": site_slug,
+                "document": config["document_key"],
+                "token": token,
+                "token_prefix": token[:12],
+                "created_at": now,
+            }
+
+        @router.get("/api/runtime/sites/{site_slug}/writer-tokens")
+        async def list_runtime_writer_tokens(
+            site_slug: str,
+            db: sqlite3.Connection = Depends(get_db),
+            actor_id: str = Depends(get_api_user),
+        ):
+            site = _site_for_actor(db, site_slug, actor_id)
+            rows = db.execute(
+                """
+                SELECT id, document_key, token_prefix, name, created_at, revoked_at
+                FROM runtime_writer_tokens
+                WHERE site_id = ?
+                ORDER BY created_at DESC
+                """,
+                (site["id"],),
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+        @router.delete("/api/runtime/sites/{site_slug}/writer-tokens/{token_id}")
+        async def revoke_runtime_writer_token(
+            site_slug: str,
+            token_id: str,
+            db: sqlite3.Connection = Depends(get_db),
+            actor_id: str = Depends(get_api_user),
+        ):
+            site = _site_for_actor(db, site_slug, actor_id)
+            row = db.execute(
+                "SELECT id FROM runtime_writer_tokens WHERE id = ? AND site_id = ?",
+                (token_id, site["id"]),
+            ).fetchone()
+            if not row:
+                raise HTTPException(404, "Runtime writer token not found")
+            now = datetime.now(timezone.utc).isoformat()
+            db.execute(
+                "UPDATE runtime_writer_tokens SET revoked_at = ? WHERE id = ?",
+                (now, token_id),
+            )
+            db.commit()
+            return {"id": token_id, "revoked_at": now}
 
     return router

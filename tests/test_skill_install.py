@@ -31,6 +31,9 @@ def test_unix_skill_installer_contains_new_skill_and_cli():
     assert '"$AGENTS_DIR/openai.yaml"' in script
     assert ".config/microsite-container" in script
     assert "API_KEY=secret-token" in script
+    assert "runtime-token create" in script
+    assert "runtime put" in script
+    assert "MICROSITE_RUNTIME_TOKEN" in script
     assert "skills/html-container" not in script
 
 

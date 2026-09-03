@@ -118,6 +118,47 @@ curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_TOKEN&target=cl
 配置位于 `~/.config/microsite-container/credentials.env`。CLI 直接连接服务地址，不读取
 HTTP 代理环境变量，因此公司内网部署不需要额外的 Clash 绕过命令。
 
+## 服务器定时更新 Runtime Data
+
+定时计算任务应与 Web 容器分离运行。先部署包含 `microsite.json` 的站点，再为目标 Document
+创建最小权限 Writer Token：
+
+```bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime-token create \
+  --slug investment-report \
+  --document latest-analysis \
+  --name daily-market-job \
+  --save-token /etc/microsite-jobs/investment-report.env
+```
+
+创建一个只在成功计算后替换输出文件的任务脚本，例如 `/srv/investment-report/update.sh`：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+set -a
+. /etc/microsite-jobs/investment-report.env
+set +a
+
+work_file=$(mktemp /tmp/investment-report.XXXXXX.json)
+trap 'rm -f "$work_file"' EXIT
+python3 /srv/investment-report/analysis.py --output "$work_file"
+python3 /root/.codex/skills/microsite-container/scripts/deploy.py runtime put \
+  --slug investment-report \
+  --document latest-analysis \
+  --file "$work_file"
+```
+
+然后由 cron 在预期时间运行，并使用 `flock` 防止任务重叠：
+
+```cron
+15 16 * * 1-5 flock -n /run/investment-report.lock /srv/investment-report/update.sh >> /var/log/investment-report.log 2>&1
+```
+
+生产任务还应校验行情日期、保留非零退出码、配置失败告警，并定期通过 `runtime get` 验证
+服务端 `revision` 和 `updatedAt`。Writer Token 仅允许写指定站点的指定 Document，可随时通过
+`runtime-token revoke` 撤销。
+
 ## 更新
 
 ```bash

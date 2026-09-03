@@ -21,7 +21,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 from app import microsites
 from app.microsites import create_data_router, create_microsite_router, init_microsite_schema
-from app.runtime_data import create_runtime_router
+from app.runtime_data import RuntimeActor, create_runtime_router, runtime_token_digest
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "data" / "html_store.db"
@@ -467,23 +467,46 @@ def get_api_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
 
 
 def get_runtime_user(request: Request, db: sqlite3.Connection = Depends(get_db)):
-    """Return the active browser-session user for runtime data, or ``None``.
+    """Return a browser actor or a document-scoped machine writer.
 
-    Runtime pages never receive deployment API tokens. Public documents may be
-    read anonymously, while writes are authorized with the existing HttpOnly
-    admin session cookie.
+    Runtime pages never receive deployment API tokens. Browser writes use the
+    HttpOnly admin session cookie; scheduled jobs use a dedicated writer token
+    restricted to one site and one document.
     """
     token = request.cookies.get(SESSION_COOKIE)
-    if not token:
+    if token:
+        user_id = verify_session_token(token)
+        if user_id:
+            row = db.execute(
+                "SELECT id FROM users WHERE id = ? AND is_active = 1",
+                (user_id,),
+            ).fetchone()
+            if row:
+                return row["id"]
+
+    auth = request.headers.get("Authorization", "")
+    if not auth:
         return None
-    user_id = verify_session_token(token)
-    if not user_id:
-        return None
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid runtime writer token")
+    writer_token = auth[7:]
     row = db.execute(
-        "SELECT id FROM users WHERE id = ? AND is_active = 1",
-        (user_id,),
+        """
+        SELECT rt.id, rt.user_id, rt.site_id, rt.document_key
+        FROM runtime_writer_tokens rt
+        JOIN users u ON u.id = rt.user_id
+        WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND u.is_active = 1
+        """,
+        (runtime_token_digest(writer_token),),
     ).fetchone()
-    return row["id"] if row else None
+    if not row:
+        raise HTTPException(status_code=401, detail="Invalid runtime writer token")
+    return RuntimeActor(
+        user_id=row["user_id"],
+        site_id=row["site_id"],
+        document_key=row["document_key"],
+        token_id=row["id"],
+    )
 
 
 MARKDOWN_TEMPLATE = """<!DOCTYPE html>
@@ -585,7 +608,7 @@ app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.include_router(create_microsite_router(get_db, get_api_user))
 app.include_router(create_data_router(get_db))
-app.include_router(create_runtime_router(get_db, get_runtime_user))
+app.include_router(create_runtime_router(get_db, get_runtime_user, get_api_user))
 
 
 # ── Public: view shared page ──────────────────────────────────────────────────

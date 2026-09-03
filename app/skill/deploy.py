@@ -26,7 +26,7 @@ class CliError(RuntimeError):
     pass
 
 
-def load_config() -> tuple[str, str]:
+def load_config_values() -> dict[str, str]:
     if not CONFIG_PATH.is_file():
         raise CliError(f"missing config: {CONFIG_PATH}")
     values: dict[str, str] = {}
@@ -36,11 +36,25 @@ def load_config() -> tuple[str, str]:
             continue
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def load_config() -> tuple[str, str]:
+    values = load_config_values()
     base_url = values.get("BASE_URL", "").rstrip("/")
     api_key = values.get("API_KEY", "")
     if not base_url or not api_key:
         raise CliError(f"BASE_URL and API_KEY are required in {CONFIG_PATH}")
     return base_url, api_key
+
+
+def load_runtime_config(explicit_token: str | None = None) -> tuple[str, str | None]:
+    values = load_config_values()
+    base_url = values.get("BASE_URL", "").rstrip("/")
+    if not base_url:
+        raise CliError(f"BASE_URL is required in {CONFIG_PATH}")
+    token = explicit_token or os.environ.get("MICROSITE_RUNTIME_TOKEN") or values.get("RUNTIME_TOKEN")
+    return base_url, token
 
 
 def api_json(base_url: str, api_key: str, method: str, path: str, body=None):
@@ -61,6 +75,40 @@ def api_json(base_url: str, api_key: str, method: str, path: str, body=None):
         except json.JSONDecodeError:
             detail = payload
         raise CliError(f"API {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise CliError(f"cannot connect to {base_url}: {exc.reason}") from exc
+
+
+def runtime_json(
+    base_url: str,
+    token: str | None,
+    method: str,
+    path: str,
+    body=None,
+    *,
+    revision: int | None = None,
+):
+    data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    if revision is not None:
+        headers["If-Match"] = f'"rev-{revision}"'
+    request = Request(f"{base_url}{path}", data=data, headers=headers, method=method)
+    opener = build_opener(ProxyHandler({}))
+    try:
+        with opener.open(request, timeout=60) as response:
+            payload = response.read()
+            return json.loads(payload) if payload else None
+    except HTTPError as exc:
+        payload = exc.read().decode("utf-8", errors="replace")
+        try:
+            detail = json.loads(payload).get("detail", payload)
+        except json.JSONDecodeError:
+            detail = payload
+        raise CliError(f"Runtime API {exc.code}: {detail}") from exc
     except URLError as exc:
         raise CliError(f"cannot connect to {base_url}: {exc.reason}") from exc
 
@@ -233,6 +281,103 @@ def command_deploy(args):
     )
 
 
+def runtime_document_path(slug: str, document: str) -> str:
+    return (
+        f"/api/runtime/sites/{quote(slug.strip().lower(), safe='')}/documents/"
+        f"{quote(document.strip(), safe='')}"
+    )
+
+
+def command_runtime_get(args):
+    base_url, token = load_runtime_config(args.token)
+    return runtime_json(
+        base_url,
+        token,
+        "GET",
+        runtime_document_path(args.slug, args.document),
+    )
+
+
+def _read_json_input(path_value: str):
+    try:
+        if path_value == "-":
+            return json.load(sys.stdin)
+        with Path(path_value).open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CliError(f"cannot read JSON input {path_value!r}: {exc}") from exc
+
+
+def command_runtime_put(args):
+    base_url, token = load_runtime_config(args.token)
+    if not token:
+        raise CliError(
+            "runtime writes require --token, MICROSITE_RUNTIME_TOKEN, or RUNTIME_TOKEN in credentials.env"
+        )
+    path = runtime_document_path(args.slug, args.document)
+    revision = args.revision
+    if revision is None:
+        current = runtime_json(base_url, token, "GET", path)
+        revision = current["revision"]
+    value = _read_json_input(args.file)
+    return runtime_json(
+        base_url,
+        token,
+        "PUT",
+        path,
+        {"value": value},
+        revision=revision,
+    )
+
+
+def command_runtime_token_create(args):
+    base_url, api_key = load_config()
+    path = runtime_document_path(args.slug, args.document) + "/writer-tokens"
+    result = api_json(base_url, api_key, "POST", path, {"name": args.name})
+    save_token = getattr(args, "save_token", None)
+    if not save_token:
+        return result
+    secret_path = Path(save_token).expanduser()
+    try:
+        secret_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(f"MICROSITE_RUNTIME_TOKEN={result['token']}\n")
+    except OSError as exc:
+        try:
+            slug = quote(args.slug.strip().lower(), safe="")
+            api_json(
+                base_url,
+                api_key,
+                "DELETE",
+                f"/api/runtime/sites/{slug}/writer-tokens/{quote(result['id'], safe='')}",
+            )
+        except CliError:
+            pass
+        raise CliError(f"cannot save runtime token to {secret_path}: {exc}") from exc
+    safe_result = {key: value for key, value in result.items() if key != "token"}
+    safe_result["token_file"] = str(secret_path)
+    return safe_result
+
+
+def command_runtime_token_list(args):
+    base_url, api_key = load_config()
+    slug = quote(args.slug.strip().lower(), safe="")
+    return api_json(base_url, api_key, "GET", f"/api/runtime/sites/{slug}/writer-tokens")
+
+
+def command_runtime_token_revoke(args):
+    base_url, api_key = load_config()
+    slug = quote(args.slug.strip().lower(), safe="")
+    token_id = quote(args.token_id.strip(), safe="")
+    return api_json(
+        base_url,
+        api_key,
+        "DELETE",
+        f"/api/runtime/sites/{slug}/writer-tokens/{token_id}",
+    )
+
+
 def add_directory_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dir", required=True, help="Built static-site directory")
     parser.add_argument("--entrypoint", default="index.html")
@@ -253,6 +398,44 @@ def build_parser() -> argparse.ArgumentParser:
     deploy.add_argument("--title")
     add_directory_args(deploy)
     deploy.set_defaults(handler=command_deploy)
+
+    runtime = subparsers.add_parser("runtime", help="Read or update Runtime Data")
+    runtime_commands = runtime.add_subparsers(dest="runtime_command", required=True)
+    runtime_get = runtime_commands.add_parser("get")
+    runtime_get.add_argument("--slug", required=True)
+    runtime_get.add_argument("--document", required=True)
+    runtime_get.add_argument("--token", help="Document-scoped writer token")
+    runtime_get.set_defaults(handler=command_runtime_get)
+    runtime_put = runtime_commands.add_parser("put")
+    runtime_put.add_argument("--slug", required=True)
+    runtime_put.add_argument("--document", required=True)
+    runtime_put.add_argument("--file", required=True, help="JSON file, or - for stdin")
+    runtime_put.add_argument("--revision", type=int, help="Expected revision; defaults to a fresh GET")
+    runtime_put.add_argument("--token", help="Document-scoped writer token")
+    runtime_put.set_defaults(handler=command_runtime_put)
+
+    writer_tokens = subparsers.add_parser(
+        "runtime-token", help="Manage document-scoped machine writer tokens"
+    )
+    writer_token_commands = writer_tokens.add_subparsers(
+        dest="runtime_token_command", required=True
+    )
+    writer_token_create = writer_token_commands.add_parser("create")
+    writer_token_create.add_argument("--slug", required=True)
+    writer_token_create.add_argument("--document", required=True)
+    writer_token_create.add_argument("--name", default="scheduled-writer")
+    writer_token_create.add_argument(
+        "--save-token",
+        help="Write MICROSITE_RUNTIME_TOKEN to a new mode-0600 env file and hide it from stdout",
+    )
+    writer_token_create.set_defaults(handler=command_runtime_token_create)
+    writer_token_list = writer_token_commands.add_parser("list")
+    writer_token_list.add_argument("--slug", required=True)
+    writer_token_list.set_defaults(handler=command_runtime_token_list)
+    writer_token_revoke = writer_token_commands.add_parser("revoke")
+    writer_token_revoke.add_argument("--slug", required=True)
+    writer_token_revoke.add_argument("--token-id", required=True)
+    writer_token_revoke.set_defaults(handler=command_runtime_token_revoke)
     return parser
 
 

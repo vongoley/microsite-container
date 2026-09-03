@@ -41,7 +41,17 @@ def runtime_client(tmp_path, monkeypatch):
         return "owner-1"
 
     def get_runtime_actor(request: Request):
-        return request.headers.get("X-Runtime-Actor")
+        actor_id = request.headers.get("X-Runtime-Actor")
+        site_id = request.headers.get("X-Runtime-Site")
+        document_key = request.headers.get("X-Runtime-Document")
+        if actor_id and (site_id or document_key):
+            return runtime_data.RuntimeActor(
+                user_id=actor_id,
+                site_id=site_id,
+                document_key=document_key,
+                token_id="test-writer",
+            )
+        return actor_id
 
     app = FastAPI()
     app.include_router(microsites.create_microsite_router(get_db, get_api_actor))
@@ -198,6 +208,41 @@ def test_runtime_data_survives_redeployment_and_seed_is_not_reapplied(runtime_cl
     current = client.get("/api/runtime/sites/persistent/documents/training-plan")
     assert current.json()["revision"] == 2
     assert current.json()["value"] == {"2026-09-01": ["back"]}
+
+
+def test_machine_writer_is_restricted_to_its_site_and_document(runtime_client):
+    client, db_path = runtime_client
+    deploy(runtime_client, "training", runtime_site_files())
+    deploy(runtime_client, "other", runtime_site_files())
+    con = sqlite3.connect(db_path)
+    training_site_id = con.execute(
+        "SELECT id FROM sites WHERE slug = 'training'"
+    ).fetchone()[0]
+    con.close()
+
+    wrong_site = client.put(
+        "/api/runtime/sites/other/documents/training-plan",
+        headers={
+            "If-Match": '"rev-1"',
+            "X-Runtime-Actor": "owner-1",
+            "X-Runtime-Site": training_site_id,
+            "X-Runtime-Document": "training-plan",
+        },
+        json={"value": {"should": "fail"}},
+    )
+    assert wrong_site.status_code == 403
+
+    wrong_document = client.put(
+        "/api/runtime/sites/training/documents/training-plan",
+        headers={
+            "If-Match": '"rev-1"',
+            "X-Runtime-Actor": "owner-1",
+            "X-Runtime-Site": training_site_id,
+            "X-Runtime-Document": "some-other-document",
+        },
+        json={"value": {"should": "fail"}},
+    )
+    assert wrong_document.status_code == 403
 
 
 def test_runtime_owner_read_and_incompatible_activation(runtime_client):
