@@ -1554,6 +1554,12 @@ async def install_skill(request: Request, token: str = "", os: str = "unix", tar
     if target not in ("codex", "claude"):
         raise HTTPException(status_code=400, detail="target must be codex or claude")
     base_url = str(request.base_url).rstrip("/")
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    if forwarded_proto in ("http", "https"):
+        parsed_base = urlsplit(base_url)
+        base_url = urlunsplit(
+            (forwarded_proto, parsed_base.netloc, parsed_base.path, "", "")
+        ).rstrip("/")
     skill_md = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     deploy_py = (SKILL_DIR / "deploy.py").read_text(encoding="utf-8")
     openai_yaml = (SKILL_DIR / "agents" / "openai.yaml").read_text(encoding="utf-8")
@@ -1636,6 +1642,7 @@ BASE_URL={base_url}
 CRED_EOF
 
 chmod +x "$SCRIPTS_DIR/deploy.py"
+chmod 600 "$CONFIG_DIR/credentials.env"
 
 echo ""
 echo "Done! Skill installed successfully."
