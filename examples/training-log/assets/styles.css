@@ -159,30 +159,6 @@ button {
   margin: 0 auto;
 }
 
-.eyebrow-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.eyebrow {
-  display: inline-flex;
-  width: fit-content;
-  min-height: 30px;
-  align-items: center;
-  margin: 0;
-  padding: 4px 11px;
-  color: var(--accent-strong);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-radius: 999px;
-  background: var(--accent-soft);
-  font-size: 0.78rem;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-}
-
-.month-kicker,
 .dialog-kicker {
   margin: 0;
   color: var(--accent);
@@ -191,22 +167,9 @@ button {
   letter-spacing: 0.14em;
 }
 
-.mode-badge {
-  display: inline-flex;
-  min-height: 30px;
-  align-items: center;
-  padding: 4px 11px;
-  color: var(--accent-strong);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
-  border-radius: 999px;
-  background: var(--accent-soft);
-  font-size: 0.78rem;
-  font-weight: 750;
-}
-
 .hero h1 {
   max-width: 720px;
-  margin: 10px 0 0;
+  margin: 0;
   font-size: clamp(1.8rem, 1.25rem + 2.7vw, 3.1rem);
   font-weight: 700;
   letter-spacing: -0.04em;
@@ -236,8 +199,15 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
+.month-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
 .month-heading h2 {
-  margin: 3px 0;
+  margin: 0;
   font-size: clamp(1.2rem, 1rem + 1vw, 1.5rem);
   line-height: 1.2;
 }
@@ -323,12 +293,43 @@ button {
   transform: none;
 }
 
+.share-action {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.share-action > .primary-button {
+  width: 100%;
+}
+
 .share-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 40;
   display: grid;
-  gap: 14px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--accent-soft);
+  width: min(420px, calc(100vw - 64px));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.share-panel::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 28px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  transform: rotate(45deg);
 }
 
 .share-panel[hidden] {
@@ -351,6 +352,7 @@ button {
 
 .share-link-row input {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0 12px;
   color: var(--text);
@@ -359,42 +361,9 @@ button {
   background: var(--surface-strong);
 }
 
-.status-row {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  gap: 9px;
-  padding: 10px 18px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.84rem;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
+#copyShareLink {
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--muted);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--muted) 14%, transparent);
-}
-
-.status-dot.connected {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-.status-dot.error {
-  background: var(--danger);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 15%, transparent);
-}
-
-.login-link {
-  min-height: 32px;
-  margin-left: auto;
-  color: var(--accent-strong);
-  font-weight: 700;
-  line-height: 32px;
+  white-space: nowrap;
 }
 
 .legend {
@@ -438,19 +407,40 @@ button {
 }
 
 .calendar {
-  padding: 8px 12px 18px;
+  padding: 6px 4px 12px;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+
+.calendar::-webkit-scrollbar {
+  display: none;
 }
 
 .weekday-row {
-  display: none;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  padding: 4px 0 7px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .calendar-grid {
   display: grid;
-  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
 }
 
 .loading-card {
+  grid-column: 1 / -1;
   padding: 42px 16px;
   color: var(--muted);
   text-align: center;
@@ -459,14 +449,15 @@ button {
 .day-card {
   display: grid;
   width: 100%;
-  min-height: 68px;
-  grid-template-columns: 84px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  min-height: 108px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  align-content: start;
+  gap: 2px;
+  padding: 4px 2px;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border: 0;
+  border-radius: 6px;
   background: var(--surface);
   text-align: left;
 }
@@ -476,13 +467,13 @@ button.day-card {
 }
 
 button.day-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   background: color-mix(in srgb, var(--accent-soft) 45%, var(--surface-strong));
 }
 
 .day-card.outside {
-  display: none;
+  display: grid;
   color: color-mix(in srgb, var(--muted) 62%, transparent);
+  opacity: 0.35;
 }
 
 .day-card.weekend {
@@ -494,15 +485,13 @@ button.day-card:hover {
 }
 
 .day-card.today {
-  border-color: var(--today);
-  box-shadow: inset 3px 0 0 var(--today);
+  box-shadow: none;
 }
 
 .day-date {
-  display: grid;
-  grid-template-columns: 26px 1fr;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: flex-start;
 }
 
 .day-number {
@@ -511,7 +500,7 @@ button.day-card:hover {
   height: 26px;
   place-items: center;
   border-radius: 50%;
-  font-size: 0.84rem;
+  font-size: 0.9rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -522,30 +511,55 @@ button.day-card:hover {
 }
 
 .day-weekday {
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  display: none;
 }
 
 .chips {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
-  gap: 5px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
+  overflow: hidden;
 }
 
 .training-chip {
-  padding: 3px 7px;
+  width: auto;
+  min-width: max-content;
+  min-height: 0;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 2px 3px;
   color: var(--training-color);
   background: var(--training-soft);
-  font-size: 0.68rem;
-  line-height: 1.2;
+  font-size: 0.62rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
+.training-chip:nth-child(n + 4) {
+  display: none;
+}
+
+.training-overflow {
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 2px 3px;
+  color: var(--muted);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
 }
 
 .empty-hint {
-  color: var(--muted);
-  font-size: 0.7rem;
+  display: none;
 }
 
 .privacy-note {
@@ -566,8 +580,7 @@ button.day-card:hover {
   color: var(--text);
 }
 
-body[data-view-mode="share"] .edit-navigation,
-body[data-view-mode="share"] .login-link {
+body[data-view-mode="share"] .edit-navigation {
   display: none;
 }
 
@@ -685,7 +698,7 @@ dialog form {
   bottom: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   padding: 12px 18px max(14px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
@@ -694,7 +707,7 @@ dialog form {
 }
 
 .dialog-actions .primary-button {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .toast {
@@ -727,6 +740,11 @@ dialog form {
     padding: 44px 0 24px;
   }
 
+  .hero h1 {
+    max-width: none;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+  }
+
   .hero-inner,
   .container {
     width: min(calc(100% - 48px), 1180px);
@@ -755,17 +773,23 @@ dialog form {
     display: flex;
   }
 
-  .share-panel {
-    grid-template-columns: minmax(230px, 0.7fr) minmax(320px, 1.3fr);
-    align-items: center;
-    padding: 18px 28px;
+  .share-action {
+    width: auto;
+  }
+
+  .share-action > .primary-button {
+    width: auto;
   }
 
   .share-link-row {
     flex-direction: row;
   }
 
-  .status-row,
+  .share-link-row input {
+    width: 0;
+    flex: 1 1 auto;
+  }
+
   .legend {
     padding-right: 22px;
     padding-left: 22px;
@@ -773,12 +797,13 @@ dialog form {
 
   .calendar {
     padding: 12px 20px 24px;
+    overflow-x: visible;
   }
 
   .weekday-row {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 8px;
+    gap: 2px;
     padding: 6px 0 10px;
     color: var(--muted);
     font-size: 0.76rem;
@@ -787,8 +812,14 @@ dialog form {
     text-align: center;
   }
 
+  .weekday-row,
+  .calendar-grid {
+    min-width: 0;
+  }
+
   .calendar-grid {
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
   }
 
   .loading-card {
@@ -801,19 +832,17 @@ dialog form {
   }
 
   .day-card {
-    min-height: 128px;
+    min-height: 114px;
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
     align-content: start;
-    gap: 9px;
-    padding: 11px;
+    gap: 4px;
+    padding: 8px 10px;
+    border-radius: 8px;
   }
 
   .day-card.outside {
     opacity: 0.42;
-  }
-
-  .day-card.today {
-    box-shadow: inset 0 3px 0 var(--today);
   }
 
   .day-date {
@@ -821,12 +850,53 @@ dialog form {
     justify-content: space-between;
   }
 
+  .day-number {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+
   .day-weekday {
     display: none;
   }
 
   .chips {
-    align-content: flex-start;
+    display: flex;
+    width: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: start;
+    gap: 6px;
+    overflow: visible;
+  }
+
+  .training-chip {
+    width: auto;
+    min-width: max-content;
+    min-height: 24px;
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+  }
+
+  .training-chip:nth-child(n + 4) {
+    display: inline-flex;
+  }
+
+  .training-overflow {
+    display: none;
+  }
+
+  .empty-hint {
+    display: block;
+    width: 18px;
+    height: 3px;
+    margin: 6px 0 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 16%, transparent);
   }
 
   .privacy-note {
@@ -848,12 +918,7 @@ dialog form {
   }
 
   .dialog-actions {
-    grid-template-columns: auto auto 1fr;
     padding: 14px 22px 18px;
-  }
-
-  .dialog-actions .primary-button {
-    grid-column: auto;
   }
 
   .toast {

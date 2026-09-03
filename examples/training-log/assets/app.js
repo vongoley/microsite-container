@@ -27,7 +27,6 @@
     body: document.body,
     grid: document.getElementById("calendarGrid"),
     monthTitle: document.getElementById("monthTitle"),
-    monthKicker: document.getElementById("monthKicker"),
     monthStats: document.getElementById("monthStats"),
     legend: document.getElementById("legend"),
     prev: document.getElementById("prevMonth"),
@@ -37,10 +36,6 @@
     sharePanel: document.getElementById("sharePanel"),
     shareLink: document.getElementById("shareLink"),
     copyShareLink: document.getElementById("copyShareLink"),
-    statusDot: document.getElementById("statusDot"),
-    saveIndicator: document.getElementById("saveIndicator"),
-    loginLink: document.getElementById("loginLink"),
-    modeBadge: document.getElementById("modeBadge"),
     privacyNote: document.getElementById("privacyNote"),
     dialog: document.getElementById("scheduleDialog"),
     form: document.getElementById("scheduleForm"),
@@ -49,7 +44,6 @@
     options: document.getElementById("trainingOptions"),
     close: document.getElementById("closeDialog"),
     cancel: document.getElementById("cancelDialog"),
-    clear: document.getElementById("clearDay"),
     save: document.getElementById("saveDay"),
     theme: document.getElementById("themeToggle"),
     themeIcon: document.getElementById("themeIcon"),
@@ -117,16 +111,6 @@
     return `--training-color:${item.color};--training-soft:${item.soft}`;
   }
 
-  function setStatus(message, state = "neutral") {
-    elements.saveIndicator.textContent = message;
-    elements.statusDot.classList.toggle("connected", state === "connected");
-    elements.statusDot.classList.toggle("error", state === "error");
-  }
-
-  function showLoginLink(show) {
-    elements.loginLink.hidden = !show || isShareView;
-  }
-
   function showToast(message) {
     window.clearTimeout(toastTimer);
     elements.toast.textContent = message;
@@ -149,8 +133,6 @@
   function configureViewMode() {
     elements.body.dataset.viewMode = isShareView ? "share" : "edit";
     if (!isShareView) return;
-    elements.modeBadge.textContent = "只读分享";
-    elements.monthKicker.textContent = "公开训练日志";
     elements.privacyNote.innerHTML = '<span aria-hidden="true">●</span><span><strong>只读访问</strong>：此链接不会授予任何编辑权限，训练数据只能由站点所有者保存。</span>';
   }
 
@@ -190,13 +172,10 @@
     const prefix = `${monthKey(viewDate)}-`;
     const monthEntries = Object.entries(plan).filter(([key]) => key.startsWith(prefix));
     const plannedDays = monthEntries.length;
-    const totalItems = monthEntries.reduce(
-      (sum, [, ids]) => sum + ids.filter((id) => id !== REST.id).length,
-      0,
-    );
+    const trainingDays = monthEntries.filter(([, ids]) => ids.some((id) => id !== REST.id)).length;
 
     elements.monthTitle.textContent = `${year}年${month + 1}月`;
-    elements.monthStats.textContent = `本月记录 ${plannedDays} 天 · ${totalItems} 项训练`;
+    elements.monthStats.textContent = `本月记录 ${plannedDays} 天 · ${trainingDays} 项训练`;
     elements.prev.setAttribute("aria-label", `查看${month === 0 ? year - 1 : year}年${month === 0 ? 12 : month}月`);
     elements.next.setAttribute("aria-label", `查看${month === 11 ? year + 1 : year}年${month === 11 ? 1 : month + 2}月`);
 
@@ -222,12 +201,15 @@
       const chips = items.map((item) => `
         <span class="training-chip" style="${trainingStyle(item)}">${item.label}</span>
       `).join("");
+      const overflowChip = items.length > 3
+        ? `<span class="training-overflow" aria-hidden="true">+${items.length - 3}</span>`
+        : "";
       const content = `
         <span class="day-date">
           <span class="day-number">${day.getDate()}</span>
           <span class="day-weekday">${weekday}</span>
         </span>
-        <span class="chips">${chips || '<span class="empty-hint">未安排</span>'}</span>
+        <span class="chips">${chips}${overflowChip}${items.length ? "" : '<span class="empty-hint" aria-hidden="true"></span>'}</span>
       `;
 
       if (isShareView || !planDocument) {
@@ -287,35 +269,27 @@
     plan = normalizePlan(nextPlan);
     saveInProgress = true;
     elements.save.disabled = true;
-    setStatus("正在保存到服务器…");
     renderCalendar();
 
     try {
       const result = await planDocument.save(plan);
       plan = normalizePlan(result.value);
       elements.dialog.close();
-      showLoginLink(false);
-      setStatus(`已同步到服务器 · Revision ${result.revision}`, "connected");
       showToast(selected.length ? "训练日志已保存" : "已标记为休息日");
     } catch (error) {
       plan = previousPlan;
       planDocument.clearDraft();
       if (error instanceof window.MicrositeData.ConflictError) {
-        setStatus("其他设备已更新数据，正在刷新…", "error");
         try {
           const latest = await planDocument.get();
           plan = normalizePlan(latest.value);
-          setStatus(`已载入服务器最新版本 · Revision ${latest.revision}`, "connected");
           showToast("发现其他设备的新版本，请重新编辑");
         } catch (_refreshError) {
-          setStatus("刷新服务器数据失败，请稍后重试", "error");
+          showToast("刷新服务器数据失败，请稍后重试");
         }
       } else if (error?.status === 401 || error?.status === 403) {
-        setStatus("当前为访客状态，登录后才能保存", "error");
-        showLoginLink(true);
         showToast("训练数据未修改：请先登录站点后台");
       } else {
-        setStatus("保存失败，服务器数据未被覆盖", "error");
         showToast("保存失败，请检查网络后重试");
       }
     } finally {
@@ -348,28 +322,19 @@
     if (!document.execCommand("copy")) throw new Error("copy failed");
   }
 
-  async function shareCurrentMonth() {
+  function shareCurrentMonth() {
+    if (!elements.sharePanel.hidden) {
+      elements.sharePanel.hidden = true;
+      elements.share.setAttribute("aria-expanded", "false");
+      return;
+    }
     const url = buildShareUrl();
     elements.shareLink.value = url;
     elements.sharePanel.hidden = false;
-    try {
-      await copyText(url);
-      showToast("只读链接已复制");
-    } catch (_error) {
-      showToast("链接已生成，请手动复制");
-    }
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${viewDate.getFullYear()}年${viewDate.getMonth() + 1}月训练日志`,
-          text: "查看这个月的训练日志（只读）",
-          url,
-        });
-      } catch (error) {
-        if (error?.name !== "AbortError") console.warn("系统分享失败：", error);
-      }
-    }
+    elements.share.setAttribute("aria-expanded", "true");
+    elements.shareLink.focus();
+    elements.shareLink.select();
+    showToast("只读分享链接已生成");
   }
 
   async function loadSeedFallback() {
@@ -388,21 +353,14 @@
         const draft = planDocument.loadDraft();
         if (draft && draft.baseRevision === result.revision) {
           plan = normalizePlan(draft.value);
-          setStatus(`已恢复本地草稿 · 基于 Revision ${result.revision}`);
-        } else {
-          setStatus(`已从服务器读取 · Revision ${result.revision}`, "connected");
         }
-      } else {
-        setStatus(`只读数据 · Revision ${result.revision}`, "connected");
       }
     } catch (error) {
       planDocument = null;
       try {
         plan = await loadSeedFallback();
-        setStatus("预览模式：显示迁移数据，暂不可编辑", "error");
       } catch (_seedError) {
         plan = {};
-        setStatus("无法读取训练数据，请稍后刷新", "error");
       }
       console.warn("Runtime Data 连接失败：", error);
     }
@@ -418,6 +376,23 @@
     renderCalendar();
   });
   elements.share.addEventListener("click", shareCurrentMonth);
+  document.addEventListener("click", (event) => {
+    if (
+      !elements.sharePanel.hidden
+      && !elements.sharePanel.contains(event.target)
+      && !elements.share.contains(event.target)
+    ) {
+      elements.sharePanel.hidden = true;
+      elements.share.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.sharePanel.hidden) {
+      elements.sharePanel.hidden = true;
+      elements.share.setAttribute("aria-expanded", "false");
+      elements.share.focus();
+    }
+  });
   elements.copyShareLink.addEventListener("click", async () => {
     try {
       await copyText(elements.shareLink.value);
@@ -435,10 +410,6 @@
     if (!button) return;
     const id = button.dataset.training;
     draftSelection.has(id) ? draftSelection.delete(id) : draftSelection.add(id);
-    updateDraftControls();
-  });
-  elements.clear.addEventListener("click", () => {
-    draftSelection.clear();
     updateDraftControls();
   });
   elements.close.addEventListener("click", () => elements.dialog.close());

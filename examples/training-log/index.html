@@ -24,11 +24,7 @@
 
   <header class="hero">
     <div class="hero-inner">
-      <div class="eyebrow-row">
-        <p class="eyebrow">TRAINING LOG</p>
-        <span class="mode-badge" id="modeBadge">可编辑站点</span>
-      </div>
-      <h1>把每一次训练，<span>留在日历里。</span></h1>
+      <h1>训练日志：把每一次训练，留在日历里</h1>
     </div>
   </header>
 
@@ -36,9 +32,10 @@
     <section class="calendar-panel" aria-labelledby="monthTitle">
       <div class="calendar-toolbar">
         <div class="month-heading">
-          <p class="month-kicker" id="monthKicker">训练安排</p>
-          <h2 id="monthTitle">正在加载…</h2>
-          <p class="month-stats" id="monthStats" aria-live="polite">正在读取服务器数据</p>
+          <div class="month-title-row">
+            <h2 id="monthTitle">正在加载…</h2>
+            <p class="month-stats" id="monthStats" aria-live="polite">正在读取服务器数据</p>
+          </div>
         </div>
 
         <div class="toolbar-actions edit-navigation" aria-label="月份导航和分享">
@@ -47,28 +44,23 @@
             <button class="secondary-button" id="todayButton" type="button">回到本月</button>
             <button class="icon-button" id="nextMonth" type="button" aria-label="下个月">→</button>
           </div>
-          <button class="primary-button" id="shareButton" type="button">
-            <span aria-hidden="true">↗</span>
-            分享本月
-          </button>
+          <div class="share-action">
+            <button class="primary-button" id="shareButton" type="button" aria-controls="sharePanel" aria-expanded="false">
+              <span aria-hidden="true">↗</span>
+              分享本月
+            </button>
+            <div class="share-panel" id="sharePanel" hidden>
+              <div class="share-copy">
+                <strong>只读分享链接已生成</strong>
+                <span>访客将固定看到当前月份，无法修改训练数据。</span>
+              </div>
+              <div class="share-link-row">
+                <input id="shareLink" type="url" readonly aria-label="只读分享链接">
+                <button class="secondary-button" id="copyShareLink" type="button">复制链接</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="share-panel" id="sharePanel" hidden>
-        <div class="share-copy">
-          <strong>只读分享链接已生成</strong>
-          <span>访客将固定看到当前月份，无法修改训练数据。</span>
-        </div>
-        <div class="share-link-row">
-          <input id="shareLink" type="url" readonly aria-label="只读分享链接">
-          <button class="secondary-button" id="copyShareLink" type="button">复制链接</button>
-        </div>
-      </div>
-
-      <div class="status-row">
-        <span class="status-dot" id="statusDot" aria-hidden="true"></span>
-        <span id="saveIndicator" role="status" aria-live="polite">正在连接 Runtime Data…</span>
-        <a class="login-link" id="loginLink" href="/admin/login" hidden>登录后编辑</a>
       </div>
 
       <div class="legend" id="legend" aria-label="训练项目图例"></div>
@@ -103,7 +95,6 @@
       <div class="training-options" id="trainingOptions"></div>
 
       <div class="dialog-actions">
-        <button class="secondary-button" id="clearDay" type="button">设为休息</button>
         <button class="secondary-button" id="cancelDialog" type="button">取消</button>
         <button class="primary-button" id="saveDay" type="submit" value="save">保存训练</button>
       </div>

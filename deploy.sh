@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="/opt/microsite-container"
 REPO="https://github.com/vongoley/microsite-container.git"
-DEFAULT_DOMAIN="csbiwithai.intsig.net"
+DEFAULT_DOMAIN="microsite.orcacalf.site"
 
 read -rp "请输入要绑定的域名 [${DEFAULT_DOMAIN}]: " DOMAIN
 DOMAIN=${DOMAIN:-$DEFAULT_DOMAIN}
