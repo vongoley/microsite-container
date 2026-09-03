@@ -1,10 +1,12 @@
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
 from argparse import Namespace
 import sqlite3
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,31 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import microsites
+
+
+def source_zip(files=None):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        for path, content in (files or {"index.html": b"source"}).items():
+            archive.writestr(path, content)
+    return output.getvalue()
+
+
+def source_descriptor(content):
+    return {
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size": len(content),
+        "format": "zip",
+    }
+
+
+def upload_source(client, slug, deployment_id, content):
+    digest = hashlib.sha256(content).hexdigest()
+    response = client.put(
+        f"/api/sites/{slug}/deployments/{deployment_id}/blobs/{digest}",
+        content=content,
+    )
+    assert response.status_code == 200
 
 
 @pytest.fixture()
@@ -54,6 +81,25 @@ def test_rejects_unsafe_asset_paths():
             microsites.normalize_asset_path(path)
 
 
+def test_new_deployment_requires_source_snapshot(client):
+    content = b"<!doctype html>"
+    client.post("/api/sites", json={"slug": "source-required", "title": "Source Required"})
+    response = client.post(
+        "/api/sites/source-required/deployments",
+        json={
+            "entrypoint": "index.html",
+            "files": [
+                {
+                    "path": "index.html",
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "size": len(content),
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_manifest_upload_finalize_activate_and_range(client):
     index = b"<!doctype html><h1>Vietnamese learning</h1>"
     audio = b"0123456789"
@@ -61,6 +107,7 @@ def test_manifest_upload_finalize_activate_and_range(client):
         ("index.html", index, "text/html"),
         ("audio/sample.mp3", audio, "audio/mpeg"),
     ]
+    source = source_zip({"index.html": index, "src/app.js": b"source logic"})
     manifest = {
         "entrypoint": "index.html",
         "spa_fallback": True,
@@ -73,6 +120,7 @@ def test_manifest_upload_finalize_activate_and_range(client):
             }
             for path, content, content_type in files
         ],
+        "source": source_descriptor(source),
     }
 
     response = client.post("/api/sites", json={"slug": "vietnamese", "title": "Vietnamese"})
@@ -81,6 +129,7 @@ def test_manifest_upload_finalize_activate_and_range(client):
     assert response.status_code == 201
     deployment = response.json()
     assert len(deployment["missing_blobs"]) == 2
+    assert deployment["missing_source_blob"] == hashlib.sha256(source).hexdigest()
 
     for _path, content, _content_type in files:
         digest = hashlib.sha256(content).hexdigest()
@@ -89,6 +138,7 @@ def test_manifest_upload_finalize_activate_and_range(client):
             content=content,
         )
         assert response.status_code == 200
+    upload_source(client, "vietnamese", deployment["id"], source)
 
     response = client.post(f"/api/sites/vietnamese/deployments/{deployment['id']}/finalize")
     assert response.status_code == 200
@@ -113,13 +163,16 @@ def test_manifest_upload_finalize_activate_and_range(client):
 def test_second_deployment_reuses_existing_blob(client):
     content = b"<!doctype html><title>same</title>"
     digest = hashlib.sha256(content).hexdigest()
+    source = source_zip({"index.html": content})
     manifest = {
         "entrypoint": "index.html",
         "files": [{"path": "index.html", "sha256": digest, "size": len(content)}],
+        "source": source_descriptor(source),
     }
     client.post("/api/sites", json={"slug": "reuse", "title": "Reuse"})
     first = client.post("/api/sites/reuse/deployments", json=manifest).json()
     client.put(f"/api/sites/reuse/deployments/{first['id']}/blobs/{digest}", content=content)
+    upload_source(client, "reuse", first["id"], source)
     client.post(f"/api/sites/reuse/deployments/{first['id']}/finalize")
     client.post(f"/api/sites/reuse/deployments/{first['id']}/activate")
 
@@ -133,15 +186,18 @@ def test_superseded_deployment_can_be_activated_for_rollback(client):
     deployment_ids = []
     for version in (b"version one", b"version two"):
         digest = hashlib.sha256(version).hexdigest()
+        source = source_zip({"index.html": version})
         manifest = {
             "entrypoint": "index.html",
             "files": [{"path": "index.html", "sha256": digest, "size": len(version)}],
+            "source": source_descriptor(source),
         }
         deployment = client.post("/api/sites/rollback/deployments", json=manifest).json()
         client.put(
             f"/api/sites/rollback/deployments/{deployment['id']}/blobs/{digest}",
             content=version,
         )
+        upload_source(client, "rollback", deployment["id"], source)
         client.post(f"/api/sites/rollback/deployments/{deployment['id']}/finalize")
         client.post(f"/api/sites/rollback/deployments/{deployment['id']}/activate")
         deployment_ids.append(deployment["id"])
@@ -200,7 +256,8 @@ def test_skill_cli_runs_complete_deployment_workflow(client, tmp_path, monkeypat
     monkeypatch.setattr(deploy_cli, "upload_blob", fake_upload)
     result = deploy_cli.command_deploy(
         Namespace(
-            dir=str(site_dir),
+            source_dir=str(site_dir),
+            publish_dir=str(site_dir),
             entrypoint="index.html",
             spa_fallback=True,
             slug="Skill-Site",
@@ -211,6 +268,47 @@ def test_skill_cli_runs_complete_deployment_workflow(client, tmp_path, monkeypat
     assert result["state"] == "active"
     assert result["url"] == "/sites/skill-site/"
     assert client.get("/sites/skill-site/audio/sample.mp3").content == b"audio bytes"
+
+    def fake_download(_base_url, _api_key, path, destination):
+        response = client.get(path)
+        assert response.status_code == 200
+        destination.write_bytes(response.content)
+        return dict(response.headers)
+
+    monkeypatch.setattr(deploy_cli, "download_api_file", fake_download)
+    restored_dir = tmp_path / "restored"
+    pulled = deploy_cli.command_pull(Namespace(slug="Skill-Site", out=str(restored_dir)))
+    assert pulled["source_mode"] == "source"
+    assert (restored_dir / "index.html").read_text(encoding="utf-8") == "<h1>Skill deploy</h1>"
+    assert not (restored_dir / ".git").exists()
+    origin = json.loads((restored_dir / ".microsite-origin.json").read_text(encoding="utf-8"))
+    assert origin["slug"] == "skill-site"
+    assert origin["deploymentId"] == result["id"]
+
+
+def test_source_archive_excludes_secrets_and_generated_directories(tmp_path):
+    module_path = Path(__file__).parents[1] / "app" / "skill" / "deploy.py"
+    spec = importlib.util.spec_from_file_location("microsite_source_archive", module_path)
+    deploy_cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deploy_cli)
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.ts").write_text("export const ok = true", encoding="utf-8")
+    (tmp_path / ".env").write_text("SECRET=do-not-upload", encoding="utf-8")
+    (tmp_path / ".env.example").write_text("SECRET=", encoding="utf-8")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "package.js").write_text("generated", encoding="utf-8")
+    archive_path, descriptor = deploy_cli.build_source_archive(tmp_path)
+    try:
+        assert descriptor["format"] == "zip"
+        with zipfile.ZipFile(archive_path) as archive:
+            names = set(archive.namelist())
+        assert "src/app.ts" in names
+        assert ".env.example" in names
+        assert ".env" not in names
+        assert "node_modules/package.js" not in names
+    finally:
+        archive_path.unlink(missing_ok=True)
 
 
 def test_skill_cli_runtime_commands_use_scoped_token_and_revision(tmp_path, monkeypatch):
@@ -257,6 +355,18 @@ def test_skill_cli_runtime_commands_use_scoped_token_and_revision(tmp_path, monk
         {"value": {"as_of": "2026-09-03"}},
         7,
     )
+
+    output_path = tmp_path / "downloaded" / "latest.json"
+    downloaded = deploy_cli.command_runtime_get(
+        Namespace(
+            slug="Investment-Report",
+            document="latest-analysis",
+            token=None,
+            out=str(output_path),
+        )
+    )
+    assert downloaded["revision"] == 7
+    assert json.loads(output_path.read_text(encoding="utf-8")) == {"old": True}
 
 
 def test_skill_cli_runtime_token_create_uses_deployment_credentials(monkeypatch):
@@ -322,6 +432,7 @@ def test_real_vietnamese_page_full_deployment(client):
         ("index.html", html, "text/html"),
         ("audio-manifest.json", audio_manifest, "application/json"),
     ]
+    source = source_zip({"index.html": html, "audio-manifest.json": audio_manifest})
     manifest = {
         "entrypoint": "index.html",
         "spa_fallback": True,
@@ -334,6 +445,7 @@ def test_real_vietnamese_page_full_deployment(client):
             }
             for path, content, content_type in assets
         ],
+        "source": source_descriptor(source),
     }
 
     assert len(keys) == 6_895
@@ -348,6 +460,7 @@ def test_real_vietnamese_page_full_deployment(client):
             content=content,
         )
         assert response.status_code == 200
+    upload_source(client, "vietnamese-real", deployment["id"], source)
     assert client.post(
         f"/api/sites/vietnamese-real/deployments/{deployment['id']}/finalize"
     ).json()["state"] == "ready"

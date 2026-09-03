@@ -33,6 +33,8 @@ def test_unix_skill_installer_contains_new_skill_and_cli():
     assert "API_KEY=secret-token" in script
     assert "runtime-token create" in script
     assert "runtime put" in script
+    assert "--source-dir" in script
+    assert "command_pull" in script
     assert "MICROSITE_RUNTIME_TOKEN" in script
     assert "skills/html-container" not in script
 

@@ -1,4 +1,4 @@
 interface:
   display_name: "Microsite Container"
   short_description: "Deploy static sites and connect scheduled Runtime Data"
-  default_prompt: "Use $microsite-container to deploy this static site with an immutable incremental release, and use scoped Runtime Data writers when server-generated data must update without redeploying the frontend."
+  default_prompt: "Use $microsite-container to deploy this site with mandatory private source recovery and an immutable public release, or pull its source by slug; use scoped Runtime Data writers when server-generated data must update without redeploying the frontend."

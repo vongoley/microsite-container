@@ -70,6 +70,11 @@ def deploy_runtime_site(client: TestClient, token: str):
         ).encode(),
     }
     headers = {"Authorization": f"Bearer {token}"}
+    source_buffer = io.BytesIO()
+    with zipfile.ZipFile(source_buffer, "w") as archive:
+        for path, content in assets.items():
+            archive.writestr(path, content)
+    source = source_buffer.getvalue()
     created = client.post(
         "/api/sites",
         json={"slug": "export-site", "title": "Export Site"},
@@ -89,6 +94,11 @@ def deploy_runtime_site(client: TestClient, token: str):
             }
             for path, content in assets.items()
         ],
+        "source": {
+            "sha256": hashlib.sha256(source).hexdigest(),
+            "size": len(source),
+            "format": "zip",
+        },
     }
     deployment = client.post(
         "/api/sites/export-site/deployments", json=manifest, headers=headers
@@ -101,6 +111,13 @@ def deploy_runtime_site(client: TestClient, token: str):
             headers=headers,
         )
         assert response.status_code == 200
+    source_response = client.put(
+        f"/api/sites/export-site/deployments/{deployment['id']}/blobs/"
+        f"{hashlib.sha256(source).hexdigest()}",
+        content=source,
+        headers=headers,
+    )
+    assert source_response.status_code == 200
     assert client.post(
         f"/api/sites/export-site/deployments/{deployment['id']}/finalize",
         headers=headers,
@@ -181,6 +198,33 @@ def test_non_owner_cannot_download_site_export(admin_client):
 
     response = client.get(f'/admin/sites/{site["id"]}/download')
     assert response.status_code == 403
+
+
+def test_api_source_download_falls_back_to_active_artifacts_for_legacy_site(admin_client):
+    client, db_path, token, _owner_id = admin_client
+    _site, deployment = deploy_runtime_site(client, token)
+    con = sqlite3.connect(db_path)
+    con.execute(
+        """
+        UPDATE deployments
+        SET source_blob_sha256 = NULL, source_size = NULL, source_format = NULL
+        WHERE id = ?
+        """,
+        (deployment["id"],),
+    )
+    con.commit()
+    con.close()
+
+    response = client.get(
+        "/api/sites/export-site/source",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.headers["x-microsite-source-mode"] == "artifact-recovery"
+    assert response.headers["x-microsite-deployment-id"] == deployment["id"]
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert archive.read("index.html") == b"<!doctype html><title>Export me</title>"
+        assert "runtime-data/documents/settings.json" not in archive.namelist()
 
 
 def test_large_site_estimate_triggers_confirmation_threshold(admin_client):

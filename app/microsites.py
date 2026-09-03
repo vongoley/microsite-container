@@ -13,7 +13,9 @@ import mimetypes
 import os
 import re
 import sqlite3
+import tempfile
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable
@@ -22,6 +24,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from app.runtime_data import (
     RuntimeConfigError,
@@ -46,6 +49,7 @@ TEMP_DIR = DATA_ROOT / "tmp"
 MAX_FILES = int(os.environ.get("MICROSITE_MAX_FILES", "100000"))
 MAX_TOTAL_BYTES = int(os.environ.get("MICROSITE_MAX_TOTAL_BYTES", str(50 * 1024**3)))
 MAX_BLOB_BYTES = int(os.environ.get("MICROSITE_MAX_BLOB_BYTES", str(5 * 1024**3)))
+MAX_SOURCE_BYTES = int(os.environ.get("MICROSITE_MAX_SOURCE_BYTES", str(2 * 1024**3)))
 PUBLIC_BASE_URL = os.environ.get("MICROSITE_PUBLIC_BASE_URL", "").rstrip("/")
 ACCEL_PREFIX = os.environ.get("MICROSITE_ACCEL_PREFIX", "").rstrip("/")
 CORS_ORIGIN = os.environ.get("MICROSITE_CORS_ORIGIN", "*")
@@ -90,10 +94,17 @@ class ManifestFile(BaseModel):
     content_type: str | None = Field(default=None, max_length=255)
 
 
+class SourceArchive(BaseModel):
+    sha256: str
+    size: int = Field(ge=0)
+    format: str = Field(pattern=r"^zip$")
+
+
 class DeploymentCreate(BaseModel):
     entrypoint: str = "index.html"
     spa_fallback: bool = True
     files: list[ManifestFile]
+    source: SourceArchive
 
 
 def init_microsite_schema(db_path: Path) -> None:
@@ -128,7 +139,10 @@ def init_microsite_schema(db_path: Path) -> None:
                 total_size INTEGER NOT NULL,
                 created_at TEXT NOT NULL,
                 finalized_at TEXT,
-                activated_at TEXT
+                activated_at TEXT,
+                source_blob_sha256 TEXT,
+                source_size INTEGER,
+                source_format TEXT
             );
 
             CREATE INDEX IF NOT EXISTS idx_deployments_site_created
@@ -154,6 +168,15 @@ def init_microsite_schema(db_path: Path) -> None:
                 ON deployment_files(blob_sha256);
             """
         )
+        deployment_columns = {
+            row[1] for row in con.execute("PRAGMA table_info(deployments)").fetchall()
+        }
+        if "source_blob_sha256" not in deployment_columns:
+            con.execute("ALTER TABLE deployments ADD COLUMN source_blob_sha256 TEXT")
+        if "source_size" not in deployment_columns:
+            con.execute("ALTER TABLE deployments ADD COLUMN source_size INTEGER")
+        if "source_format" not in deployment_columns:
+            con.execute("ALTER TABLE deployments ADD COLUMN source_format TEXT")
         init_runtime_schema(con)
         con.commit()
     finally:
@@ -192,6 +215,26 @@ def _deployment_payload(db: sqlite3.Connection, deployment: sqlite3.Row) -> dict
             (deployment["id"],),
         ).fetchall()
     ]
+    missing_source_blob = None
+    source_digest = deployment["source_blob_sha256"]
+    if source_digest:
+        source_blob = db.execute(
+            "SELECT size, storage_path FROM blobs WHERE sha256 = ?",
+            (source_digest,),
+        ).fetchone()
+        try:
+            source_path = Path(source_blob["storage_path"]) if source_blob else None
+            source_valid = bool(
+                source_blob
+                and source_blob["size"] == deployment["source_size"]
+                and source_path
+                and source_path.is_file()
+                and source_path.stat().st_size == deployment["source_size"]
+            )
+        except OSError:
+            source_valid = False
+        if not source_valid:
+            missing_source_blob = source_digest
     return {
         "id": deployment["id"],
         "state": deployment["state"],
@@ -201,6 +244,16 @@ def _deployment_payload(db: sqlite3.Connection, deployment: sqlite3.Row) -> dict
         "total_size": deployment["total_size"],
         "created_at": deployment["created_at"],
         "missing_blobs": missing,
+        "source": (
+            {
+                "sha256": source_digest,
+                "size": deployment["source_size"],
+                "format": deployment["source_format"],
+            }
+            if source_digest
+            else None
+        ),
+        "missing_source_blob": missing_source_blob,
         "immutable_url": _site_url("", deployment["id"]),
     }
 
@@ -232,6 +285,49 @@ def _validate_deployment_files(db: sqlite3.Connection, deployment_id: str) -> li
         if not valid:
             missing.append(row["blob_sha256"])
     return sorted(missing)
+
+
+def _validate_source_blob(db: sqlite3.Connection, deployment: sqlite3.Row) -> bool:
+    digest = deployment["source_blob_sha256"]
+    if not digest:
+        return False
+    blob = db.execute(
+        "SELECT size, storage_path FROM blobs WHERE sha256 = ?",
+        (digest,),
+    ).fetchone()
+    if not blob or blob["size"] != deployment["source_size"]:
+        return False
+    try:
+        source_path = Path(blob["storage_path"])
+        return source_path.is_file() and source_path.stat().st_size == deployment["source_size"]
+    except OSError:
+        return False
+
+
+def _validate_source_archive(db: sqlite3.Connection, deployment: sqlite3.Row) -> None:
+    blob = db.execute(
+        "SELECT storage_path FROM blobs WHERE sha256 = ?",
+        (deployment["source_blob_sha256"],),
+    ).fetchone()
+    if not blob or deployment["source_format"] != "zip":
+        raise HTTPException(400, "Source archive must be a ZIP file")
+    try:
+        with zipfile.ZipFile(blob["storage_path"]) as archive:
+            files = [entry for entry in archive.infolist() if not entry.is_dir()]
+            if not files:
+                raise HTTPException(400, "Source archive must contain at least one file")
+            if len(files) > MAX_FILES:
+                raise HTTPException(413, "Source archive exceeds the file-count limit")
+            if sum(entry.file_size for entry in files) > MAX_SOURCE_BYTES:
+                raise HTTPException(413, "Expanded source archive exceeds the source size limit")
+            for entry in files:
+                if "\\" in entry.filename:
+                    raise HTTPException(400, "Source archive contains an unsafe path")
+                normalize_asset_path(entry.filename)
+    except HTTPException:
+        raise
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise HTTPException(400, f"Invalid source archive: {exc}") from exc
 
 
 def create_microsite_router(
@@ -358,6 +454,17 @@ def create_microsite_router(
         if total_size > MAX_TOTAL_BYTES:
             raise HTTPException(413, "Deployment exceeds the total size limit")
 
+        source_digest = body.source.sha256.lower()
+        if not SHA256_RE.fullmatch(source_digest):
+            raise HTTPException(400, "Invalid SHA-256 for source archive")
+        if body.source.size <= 0:
+            raise HTTPException(400, "Source archive must not be empty")
+        if body.source.size > MAX_SOURCE_BYTES:
+            raise HTTPException(413, "Source archive exceeds the source size limit")
+        if source_digest in hash_sizes and hash_sizes[source_digest] != body.source.size:
+            raise HTTPException(400, f"Conflicting sizes for blob {source_digest}")
+        hash_sizes[source_digest] = body.source.size
+
         digests = list(hash_sizes)
         for offset in range(0, len(digests), 500):
             batch = digests[offset : offset + 500]
@@ -375,8 +482,9 @@ def create_microsite_router(
             db.execute(
                 """
                 INSERT INTO deployments
-                    (id, site_id, state, entrypoint, spa_fallback, file_count, total_size, created_at)
-                VALUES (?, ?, 'staging', ?, ?, ?, ?, ?)
+                    (id, site_id, state, entrypoint, spa_fallback, file_count, total_size,
+                     created_at, source_blob_sha256, source_size, source_format)
+                VALUES (?, ?, 'staging', ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     deployment_id,
@@ -386,6 +494,9 @@ def create_microsite_router(
                     len(normalized),
                     total_size,
                     now,
+                    source_digest,
+                    body.source.size,
+                    body.source.format,
                 ),
             )
             db.executemany(
@@ -434,7 +545,7 @@ def create_microsite_router(
         if not SHA256_RE.fullmatch(digest):
             raise HTTPException(400, "Invalid SHA-256")
         deployment = db.execute(
-            "SELECT state FROM deployments WHERE id = ? AND site_id = ?",
+            "SELECT * FROM deployments WHERE id = ? AND site_id = ?",
             (deployment_id, site["id"]),
         ).fetchone()
         if not deployment:
@@ -445,8 +556,11 @@ def create_microsite_router(
             "SELECT size FROM deployment_files WHERE deployment_id = ? AND blob_sha256 = ? LIMIT 1",
             (deployment_id, digest),
         ).fetchone()
+        is_source_blob = digest == deployment["source_blob_sha256"]
+        if not expected and is_source_blob:
+            expected = {"size": deployment["source_size"]}
         if not expected:
-            raise HTTPException(400, "Blob is not referenced by this deployment")
+            raise HTTPException(400, "Blob is not referenced by this deployment or its source archive")
         expected_size = expected["size"]
 
         existing = db.execute(
@@ -477,7 +591,8 @@ def create_microsite_router(
             with temp_path.open("xb") as handle:
                 async for chunk in request.stream():
                     written += len(chunk)
-                    if written > expected_size or written > MAX_BLOB_BYTES:
+                    upload_limit = MAX_SOURCE_BYTES if is_source_blob else MAX_BLOB_BYTES
+                    if written > expected_size or written > upload_limit:
                         raise HTTPException(413, "Uploaded blob exceeds manifest size")
                     hasher.update(chunk)
                     handle.write(chunk)
@@ -531,6 +646,15 @@ def create_microsite_router(
                 409,
                 {"message": "Deployment has missing or corrupt blobs", "missing_blobs": missing_blobs},
             )
+        if not _validate_source_blob(db, deployment):
+            raise HTTPException(
+                409,
+                {
+                    "message": "Deployment has a missing or corrupt source archive",
+                    "missing_source_blob": deployment["source_blob_sha256"],
+                },
+            )
+        _validate_source_archive(db, deployment)
         try:
             load_runtime_config(db, deployment_id)
         except RuntimeConfigError as exc:
@@ -611,6 +735,92 @@ def create_microsite_router(
         payload = _deployment_payload(db, deployment)
         payload["url"] = _site_url(site_slug)
         return payload
+
+    @router.get("/api/sites/{site_slug}/source", response_class=FileResponse)
+    async def download_site_source(
+        site_slug: str,
+        db: sqlite3.Connection = Depends(get_db),
+        owner_id: str = Depends(get_api_user),
+    ):
+        """Download only the active deployment's private development source.
+
+        Deployments created before source snapshots existed fall back to a ZIP of
+        their published files. Runtime Data values and history are deliberately
+        excluded from both modes.
+        """
+        site = _site_for_actor(db, site_slug, owner_id)
+        if not site["active_deployment_id"]:
+            raise HTTPException(409, "Site has no active deployment")
+        deployment = db.execute(
+            "SELECT * FROM deployments WHERE id = ? AND site_id = ? AND state = 'active'",
+            (site["active_deployment_id"], site["id"]),
+        ).fetchone()
+        if not deployment:
+            raise HTTPException(409, "Site has no active deployment")
+
+        headers = {
+            "Cache-Control": "private, no-store, max-age=0",
+            "X-Microsite-Deployment-Id": deployment["id"],
+        }
+        filename = f"{site['slug']}-source.zip"
+        if deployment["source_blob_sha256"]:
+            if deployment["source_format"] != "zip" or not _validate_source_blob(db, deployment):
+                raise HTTPException(409, "Source archive is missing or corrupt")
+            blob = db.execute(
+                "SELECT storage_path FROM blobs WHERE sha256 = ?",
+                (deployment["source_blob_sha256"],),
+            ).fetchone()
+            headers["X-Microsite-Source-Mode"] = "source"
+            headers["X-Microsite-Source-Sha256"] = deployment["source_blob_sha256"]
+            return FileResponse(
+                Path(blob["storage_path"]),
+                media_type="application/zip",
+                filename=filename,
+                headers=headers,
+            )
+
+        TEMP_DIR.mkdir(parents=True, exist_ok=True)
+        descriptor, raw_path = tempfile.mkstemp(
+            prefix=f"legacy-source-{site['slug']}-",
+            suffix=".zip",
+            dir=TEMP_DIR,
+        )
+        os.close(descriptor)
+        archive_path = Path(raw_path)
+        files = db.execute(
+            """
+            SELECT df.path, df.size, b.storage_path
+            FROM deployment_files df
+            JOIN blobs b ON b.sha256 = df.blob_sha256
+            WHERE df.deployment_id = ?
+            ORDER BY df.path
+            """,
+            (deployment["id"],),
+        ).fetchall()
+        try:
+            with zipfile.ZipFile(
+                archive_path,
+                "w",
+                compression=zipfile.ZIP_STORED,
+                allowZip64=True,
+            ) as archive:
+                for item in files:
+                    asset_path = normalize_asset_path(item["path"])
+                    source_path = Path(item["storage_path"])
+                    if not source_path.is_file() or source_path.stat().st_size != item["size"]:
+                        raise HTTPException(409, f"Published asset is missing or corrupt: {asset_path}")
+                    archive.write(source_path, asset_path)
+        except Exception:
+            archive_path.unlink(missing_ok=True)
+            raise
+        headers["X-Microsite-Source-Mode"] = "artifact-recovery"
+        return FileResponse(
+            archive_path,
+            media_type="application/zip",
+            filename=filename,
+            headers=headers,
+            background=BackgroundTask(archive_path.unlink, missing_ok=True),
+        )
 
     return router
 

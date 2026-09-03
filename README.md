@@ -14,6 +14,7 @@ Microsite Container 从 HTML Container 演进而来，但两者定位不同：HT
 - 流式大文件上传：不把音频、视频或大型数据文件一次性载入内存
 - 内容寻址存储：相同文件跨部署复用，本地磁盘目录可迁移到 S3/R2
 - 原子激活：SQLite 事务一次切换站点的 active deployment，不暴露半成品
+- 强制源码快照：每个新 deployment 同时保存私有开发源码，换设备后可按 slug 恢复
 - 静态资源服务：支持 MIME、ETag、Range、跨域资源访问和 SPA fallback
 - Nginx 数据面：可通过 `X-Accel-Redirect` 将文件传输卸载给 Nginx
 - Runtime Data：微站点通过统一 SDK 读写站点级 JSON Document，支持 Schema、版本冲突和历史留存
@@ -128,6 +129,11 @@ Content-Type: application/json
 {
   "entrypoint": "index.html",
   "spa_fallback": true,
+  "source": {
+    "sha256": "<source-zip-sha256>",
+    "size": 123456,
+    "format": "zip"
+  },
   "files": [
     {
       "path": "index.html",
@@ -139,7 +145,8 @@ Content-Type: application/json
 }
 ```
 
-响应中的 `missing_blobs` 是本次真正需要上传的哈希列表。
+`source` 是必填的私有开发源码 ZIP；`files` 是公开发布产物。响应中的 `missing_blobs`
+是本次真正需要上传的公开资源哈希，`missing_source_blob` 表示是否还需上传源码 ZIP。
 
 ### 3. 上传缺失 blob
 
@@ -150,8 +157,9 @@ Content-Type: application/octet-stream
 Content-Length: ...
 ```
 
-服务端在落盘前同时校验声明长度、实际长度和 SHA-256。一个 deployment 只能上传其
-manifest 引用的 blob。
+公开资源和源码 ZIP 使用同一内容寻址上传接口，但源码没有公开文件映射，不能通过站点数据面
+访问。服务端在落盘前同时校验声明长度、实际长度和 SHA-256。一个 deployment 只能上传其
+manifest 引用的公开资源或源码 blob。
 
 ### 4. 校验并原子激活
 
@@ -336,19 +344,57 @@ curl -fsSL "https://your-domain.com/api/install-skill?token=YOUR_TOKEN" | bash
 安装位置为 `~/.codex/skills/microsite-container`，配置位于
 `~/.config/microsite-container/credentials.env`。
 
-发布站点目录：
+发布站点目录。源码快照是必需的，公开发布目录必须是浏览器可以直接运行的静态产物：
 
 ```bash
 python3 ~/.codex/skills/microsite-container/scripts/deploy.py check
+
+# 单 HTML/原生静态站点
 python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
   --slug vietnamese-learning \
   --title "Vietnamese Learning" \
-  --dir ./dist \
+  --source-dir ./site \
+  --publish-dir ./site \
   --entrypoint index.html
+
+# 需要构建的项目
+npm run build
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
+  --slug dashboard \
+  --source-dir . \
+  --publish-dir ./dist
 ```
 
 CLI 会自动创建不存在的站点，并完成 hash、manifest、增量上传、finalize 和 activate。
-重复发布相同资源时不会再次上传已有 blob。
+重复发布相同资源或源码快照时不会再次上传已有 blob。源码打包默认排除 `.git`、`node_modules`、
+虚拟环境、构建目录、`.env`、私钥、缓存和本地拉取元数据；部署凭证不得放入源码。
+
+### 按 slug 恢复开发源码
+
+无需登录 Admin，可使用个人 API Token 在新设备直接恢复当前站点的私有源码：
+
+```bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py pull \
+  --slug vietnamese-learning \
+  --out ./vietnamese-learning
+```
+
+`pull` 只下载源码，不下载 Runtime Data 当前值、历史、数据库、日志、密钥或历史 deployment。
+目标目录必须不存在或为空，成功后会写入 `.microsite-origin.json` 记录来源版本。
+
+对强制源码能力上线前创建的旧 deployment，服务端会把当前发布产物作为一次性恢复源码，并在
+结果中返回 `source_mode: artifact-recovery`。当前单 HTML/原生静态站点可直接基于它迭代；
+复杂构建项目仍无法从编译产物还原从未上传过的原始组件源码。使用新协议重新部署一次后，
+后续拉取将返回正式源码快照和 `source_mode: source`。
+
+Runtime Data 始终按 Document 显式读取；需要本地样本时再执行：
+
+```bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime get \
+  --slug vietnamese-learning \
+  --document training-plan \
+  --out ./dev-data/training-plan.json
+```
 
 ## Nginx 数据面
 
@@ -379,6 +425,7 @@ FastAPI 仍负责 deployment/path 到 hash 的解析、权限边界和响应头�
 | `MICROSITE_MAX_FILES` | `100000` | 单次 deployment 文件数上限 |
 | `MICROSITE_MAX_TOTAL_BYTES` | `53687091200` | manifest 总逻辑大小上限（50 GiB） |
 | `MICROSITE_MAX_BLOB_BYTES` | `5368709120` | 单个 blob 上限（5 GiB） |
+| `MICROSITE_MAX_SOURCE_BYTES` | `2147483648` | 单个私有源码 ZIP 上限（2 GiB） |
 | `MICROSITE_RUNTIME_MAX_DOCUMENT_BYTES` | `1048576` | 单个 Runtime Document 的平台级上限 |
 | `MICROSITE_RUNTIME_MAX_VERSIONS` | `100` | 每个 Runtime Document 保留的最近版本数 |
 | `MICROSITE_PUBLIC_BASE_URL` | 空 | 静态站点的独立公开 Origin |

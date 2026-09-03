@@ -1,12 +1,13 @@
 ---
 name: microsite-container
-description: Deploy and update multi-file static websites, SPAs, large HTML applications, datasets, audio, and video assets through Microsite Container, and connect deployed sites to mutable Runtime Data or server-scheduled data producers. Use when Codex needs to publish a site directory, host a static microsite, incrementally sync content-addressed assets, activate an immutable deployment, inspect hosted sites, configure Runtime Data, or arrange recurring server-side data refreshes without redeploying the frontend.
+description: Deploy and update recoverable multi-file static websites, SPAs, large HTML applications, datasets, audio, and video assets through Microsite Container, pull private source by site slug, and connect deployed sites to mutable Runtime Data or server-scheduled data producers. Use when Codex needs to publish a site with mandatory source recovery, restore a hosted site's development source, incrementally sync content-addressed assets, activate an immutable deployment, inspect hosted sites, configure Runtime Data, or arrange recurring server-side data refreshes without redeploying the frontend.
 ---
 
 # Microsite Container
 
-Use the bundled `scripts/deploy.py` CLI. It hashes local files, creates a manifest,
-uploads only missing blobs, finalizes the immutable deployment, and atomically
+Use the bundled `scripts/deploy.py` CLI. Every new deployment must include a private
+development-source snapshot as well as its public static output. The CLI hashes local
+files, uploads only missing blobs, finalizes the immutable deployment, and atomically
 activates it.
 
 ## Initialize
@@ -28,27 +29,49 @@ If configuration is missing, ask the user for the API key and service URL. Never
 print the key. If the check returns an API error, report it before attempting a
 deployment.
 
-## Deploy a directory
+## Deploy source and public output
 
 ```bash
 python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
   --slug vietnamese-learning \
   --title "Vietnamese Learning" \
-  --dir ./dist \
+  --source-dir . \
+  --publish-dir ./dist \
   --entrypoint index.html
 ```
 
-The site slug uses lowercase letters, digits, dots, dashes, or underscores. The
-directory must contain the entrypoint. The CLI excludes `.git`, `__pycache__`, and
-`.DS_Store`, rejects symlinks, streams large uploads, and prints the active URL as
-JSON on success.
+The site slug uses lowercase letters, digits, dots, dashes, or underscores. The publish
+directory must contain the entrypoint. The private source snapshot is mandatory. It
+excludes `.git`, dependency directories, virtual environments, build output, `.env`,
+private-key files, caches, and local pull metadata. It rejects symlinks, streams large
+uploads, and prints the active URL as JSON on success. Never place credentials elsewhere
+in the source tree merely to bypass these exclusions.
 
-Deploy the built/static output directory, not a source tree that still requires a
-development server. Preserve relative asset paths. For a single large HTML file,
-place it in a directory as `index.html` and deploy that directory.
+For a single HTML or native static site, pass the same directory to both `--source-dir`
+and `--publish-dir`. For React, Vue, or another compiled project, use the project root
+as `--source-dir` and its built static output as `--publish-dir`. Preserve relative
+asset paths.
 
 SPA history fallback is enabled by default. Use `--no-spa-fallback` for sites that
 should return 404 for unknown extensionless paths.
+
+## Restore source by slug
+
+On a device without the project, restore the active deployment's private source without
+opening Admin:
+
+```bash
+python3 ~/.codex/skills/microsite-container/scripts/deploy.py pull \
+  --slug vietnamese-learning \
+  --out ./vietnamese-learning
+```
+
+The output directory must be new or empty. `pull` downloads source and writes
+`.microsite-origin.json`; it does not download Runtime Data values, history, databases,
+logs, secrets, or old deployments. For a legacy deployment created before source
+snapshots, the server returns the active public files and reports
+`source_mode: artifact-recovery`. After the recovered project is redeployed once with
+the current CLI, later pulls return `source_mode: source`.
 
 ## Runtime data
 
@@ -106,7 +129,8 @@ with a conflict instead of being silently overwritten. To read or verify data:
 
 ```bash
 python3 ~/.codex/skills/microsite-container/scripts/deploy.py runtime get \
-  --slug investment-report --document latest-analysis
+  --slug investment-report --document latest-analysis \
+  --out ./dev-data/latest-analysis.json
 ```
 
 Manage scoped credentials with:
@@ -133,9 +157,10 @@ For a recurring job, verify all of the following before declaring it complete:
 
 ## Capability boundaries
 
-- Supported: immutable static deployments, incremental blob upload, atomic activation,
-  rollback, Runtime Data storage, public/owner reads, browser owner writes, scoped
-  machine writes, Schema validation, optimistic revisions, and retained history.
+- Supported: mandatory private source snapshots, source restore by slug, immutable
+  static deployments, incremental blob upload, atomic activation, rollback, Runtime
+  Data storage, public/owner reads, browser owner writes, scoped machine writes, Schema
+  validation, optimistic revisions, and retained history.
 - External by design: scheduled calculation execution, arbitrary Python/Node runtime,
   job isolation, third-party API credentials, retries, alerts, and job logs.
 - Do not claim the Runtime Data API is absent. It exists; choose browser-session writes
@@ -159,6 +184,7 @@ python3 ~/.codex/skills/microsite-container/scripts/deploy.py list
 ## Deployment guarantees
 
 - Treat every deployment as immutable after finalization.
+- Require both `--source-dir` and `--publish-dir`; never publish without recoverable source.
 - Upload only hashes returned in `missing_blobs`.
 - Do not activate until finalization succeeds.
 - Re-running `deploy` is safe; unchanged blobs are reused by SHA-256.

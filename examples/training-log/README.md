@@ -30,6 +30,7 @@ python3 ~/.codex/skills/microsite-container/scripts/deploy.py manifest \
 python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
   --slug training-log \
   --title "训练日志" \
-  --dir examples/training-log \
+  --source-dir examples/training-log \
+  --publish-dir examples/training-log \
   --entrypoint index.html
 ```

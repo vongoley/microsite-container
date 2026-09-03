@@ -1,12 +1,30 @@
 import hashlib
+import io
 import json
 import sqlite3
+import zipfile
 
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from app import microsites, runtime_data
+
+
+def source_for_files(files):
+    source_buffer = io.BytesIO()
+    with zipfile.ZipFile(source_buffer, "w") as archive:
+        for path, content, _content_type in files:
+            archive.writestr(path, content)
+    return source_buffer.getvalue()
+
+
+def source_config(source):
+    return {
+        "sha256": hashlib.sha256(source).hexdigest(),
+        "size": len(source),
+        "format": "zip",
+    }
 
 
 @pytest.fixture()
@@ -65,6 +83,7 @@ def deploy(runtime_client, slug, files, *, create_site=True):
     if create_site:
         response = client.post("/api/sites", json={"slug": slug, "title": slug.title()})
         assert response.status_code == 201
+    source = source_for_files(files)
     manifest = {
         "entrypoint": "index.html",
         "spa_fallback": False,
@@ -77,6 +96,7 @@ def deploy(runtime_client, slug, files, *, create_site=True):
             }
             for path, content, content_type in files
         ],
+        "source": source_config(source),
     }
     response = client.post(f"/api/sites/{slug}/deployments", json=manifest)
     assert response.status_code == 201
@@ -88,6 +108,12 @@ def deploy(runtime_client, slug, files, *, create_site=True):
             content=content,
         )
         assert response.status_code == 200
+    source_response = client.put(
+        f"/api/sites/{slug}/deployments/{deployment['id']}/blobs/"
+        f"{hashlib.sha256(source).hexdigest()}",
+        content=source,
+    )
+    assert source_response.status_code == 200
     finalized = client.post(
         f"/api/sites/{slug}/deployments/{deployment['id']}/finalize"
     )
@@ -265,6 +291,7 @@ def test_runtime_owner_read_and_incompatible_activation(runtime_client):
     ).status_code == 200
 
     files = runtime_site_files(seed=1, read="owner", schema_type="number")
+    source = source_for_files(files)
     manifest = {
         "entrypoint": "index.html",
         "files": [
@@ -276,6 +303,7 @@ def test_runtime_owner_read_and_incompatible_activation(runtime_client):
             }
             for path, content, content_type in files
         ],
+        "source": source_config(source),
     }
     deployment = client.post(
         "/api/sites/private-runtime/deployments", json=manifest
@@ -286,6 +314,11 @@ def test_runtime_owner_read_and_incompatible_activation(runtime_client):
             f"/api/sites/private-runtime/deployments/{deployment['id']}/blobs/{digest}",
             content=content,
         )
+    client.put(
+        f"/api/sites/private-runtime/deployments/{deployment['id']}/blobs/"
+        f"{hashlib.sha256(source).hexdigest()}",
+        content=source,
+    )
     assert client.post(
         f"/api/sites/private-runtime/deployments/{deployment['id']}/finalize"
     ).status_code == 200
@@ -326,6 +359,7 @@ def test_finalize_rejects_invalid_runtime_declaration(runtime_client):
         ("index.html", b"<!doctype html>", "text/html"),
         ("microsite.json", json.dumps(config).encode(), "application/json"),
     ]
+    source = source_for_files(files)
     manifest = {
         "entrypoint": "index.html",
         "files": [
@@ -337,6 +371,7 @@ def test_finalize_rejects_invalid_runtime_declaration(runtime_client):
             }
             for path, content, content_type in files
         ],
+        "source": source_config(source),
     }
     deployment = client.post(
         "/api/sites/invalid-runtime/deployments", json=manifest
@@ -347,6 +382,11 @@ def test_finalize_rejects_invalid_runtime_declaration(runtime_client):
             f"/api/sites/invalid-runtime/deployments/{deployment['id']}/blobs/{digest}",
             content=content,
         )
+    client.put(
+        f"/api/sites/invalid-runtime/deployments/{deployment['id']}/blobs/"
+        f"{hashlib.sha256(source).hexdigest()}",
+        content=source,
+    )
     response = client.post(
         f"/api/sites/invalid-runtime/deployments/{deployment['id']}/finalize"
     )
