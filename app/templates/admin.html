@@ -1,3 +1,4 @@
+{% from "icons/lucide.html" import icon, sprite %}
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
@@ -103,11 +104,12 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100dvh;
+      font-size: clamp(.9rem, .85rem + .25vw, 1rem);
     }
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: .875rem 5rem .875rem 1.5rem;
+      padding: .375rem 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -115,16 +117,14 @@
       top: 0;
       z-index: 10;
     }
-    header h1 { font-size: 1.1rem; font-weight: 600; color: var(--accent); }
+    header h1 { font-size: clamp(1.1rem, 1rem + .5vw, 1.4rem); font-weight: 600; color: var(--accent); }
     header a { font-size: .875rem; color: var(--muted); text-decoration: none; }
     header a:hover { color: var(--text); }
-    main { max-width: 1200px; margin: 1rem auto; padding: 0 .5rem; }
+    main { max-width: 1200px; margin: 1rem auto; padding: 0 16px; }
 
     .theme-toggle {
-      position: fixed;
-      top: max(8px, env(safe-area-inset-top));
-      right: max(12px, env(safe-area-inset-right));
-      z-index: 100;
+      position: relative;
+      flex-shrink: 0;
       display: grid;
       width: 44px;
       height: 44px;
@@ -253,7 +253,7 @@
     .visibility-col { width: 110px; }
     .owner-col { width: 140px; }
     .uploaded-col { width: 155px; }
-    .actions-col { width: 176px; }
+    .actions-col { width: 76px; }
     .id-link, .slug-link {
       flex: 1 1 auto;
       min-width: 0;
@@ -270,7 +270,6 @@
     th.actions-col, td.actions-col {
       position: sticky;
       right: 0;
-      box-shadow: -1px 0 0 var(--border);
     }
     th.actions-col { z-index: 3; background: var(--bg); }
     td.actions-col { z-index: 2; background: var(--surface); }
@@ -529,23 +528,97 @@
       .table-wrap { display: block; }
       .card-list { display: none; }
     }
+
+    .more-button, .history-close { width: 44px; height: 44px; border: none; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-size: 1.6rem; flex-shrink: 0; }
+    .more-button:hover, .more-button[aria-expanded="true"], .history-close:hover { color: var(--accent); }
+    .actions-menu { position: fixed; z-index: 120; width: 176px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px color-mix(in srgb, var(--black) 15%, transparent); }
+    .actions-menu [role="menuitem"] { display: flex; align-items: center; width: 100%; min-height: 44px; padding: 0 12px; border: none; border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: .9rem; text-decoration: none; cursor: pointer; }
+    .actions-menu [role="menuitem"]:hover { background: var(--neutral-soft); }
+    .actions-menu button:disabled { opacity: .45; cursor: not-allowed; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .history-drawer { margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; width: 100%; max-width: 100%; border: none; border-left: 1px solid var(--border); padding: 0; background: var(--surface); color: var(--text); }
+    .history-drawer[open] { display: flex; flex-direction: column; animation: slide-in .2s ease-out; }
+    .history-drawer::backdrop { background: color-mix(in srgb, var(--black) 40%, transparent); }
+    .history-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 16px 16px; border-bottom: 1px solid var(--border); }
+    .history-head h2 { font-size: clamp(1.2rem, 1rem + 1vw, 1.4rem); }
+    .history-head p { margin-top: 8px; color: var(--muted); overflow-wrap: anywhere; }
+    .history-list { overflow-y: auto; padding: 16px; flex: 1; }
+    .history-item { padding: 14px 0 6px; border-bottom: 1px solid var(--border); }
+    .history-item:first-child { padding-top: 0; }
+    .history-item:last-child { border-bottom: none; }
+    .history-item-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; }
+    .history-item-top time { color: var(--text); font-size: .85rem; white-space: nowrap; }
+    .history-detail { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+    .history-id { font: .8rem monospace; overflow-wrap: anywhere; min-width: 0; }
+    .history-link, .history-retry { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; color: var(--accent); }
+    .history-link { max-width: 100%; text-decoration: none; }
+    .history-link:hover .history-id { text-decoration: underline; }
+    .history-version { display: flex; align-items: center; min-height: 44px; }
+    .history-message { padding: 24px 0; color: var(--muted); }
+    .history-retry { background: var(--surface); border: 1px solid var(--border); padding: 0 16px; border-radius: 6px; cursor: pointer; }
+    body:has(.history-drawer[open]) { overflow: hidden; }
+    .page-card-meta { flex-wrap: wrap; margin-top: 8px; }
+    header { flex-wrap: wrap; gap: 12px; padding-left: 16px; }
+    header nav { flex-wrap: wrap; margin-left: auto; }
+    header nav a, header nav > span { font-size: .875rem; line-height: 1.25; }
+    header a, header nav > span { display: inline-flex; align-items: center; min-height: 44px; }
+    .copy-btn { width: 44px; height: 44px; }
+    .search-row input, .search-row select, .btn-reset { min-height: 44px; min-width: 44px; color: var(--text); }
+    .search-row .field-keyword input { min-width: 0; width: 100%; }
+    @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @media (prefers-reduced-motion: reduce) { .history-drawer[open] { animation: none; } }
+    @media (min-width: 768px) {
+      main { padding: 0 24px; }
+      .history-drawer { width: 520px; }
+      .history-head, .history-list { padding: 24px; }
+    }
+    .lucide { flex-shrink: 0; vertical-align: middle; }
+    /* Compact visual surface; retain a 44px touch target. */
+    .more-button, .history-close { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .more-button::before, .history-close::before {
+      content: ""; position: absolute; inset: 6px; border-radius: 6px;
+      background: transparent; pointer-events: none;
+    }
+    .more-button:hover::before, .more-button[aria-expanded="true"]::before, .history-close:hover::before { background: var(--neutral-soft); }
+    .more-button .lucide, .history-close .lucide { position: relative; width: 18px; height: 18px; }
+    .theme-toggle { border: none; background: transparent; }
+    .theme-toggle::before {
+      content: ""; position: absolute; inset: 6px; border: 1px solid var(--border-strong);
+      border-radius: 50%; background: var(--surface); pointer-events: none;
+    }
+    .theme-toggle #themeIcon { position: relative; display: flex; }
+    .theme-toggle .lucide { width: 18px; height: 18px; }
+    .actions-menu [role="menuitem"], .history-link { gap: 8px; }
+    .actions-menu .lucide, .history-link .lucide { width: 16px; height: 16px; }
+    .vis-badge .lucide { width: 12px; height: 12px; margin-right: 4px; }
   </style>
 </head>
 <body>
-  <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题"><span id="themeIcon" aria-hidden="true">🌙</span></button>
+  {{ sprite() }}
   <header>
     <h1>Microsite Container</h1>
     <nav style="display:flex;align-items:center;gap:1rem;">
-      <span style="font-size:.8rem;color:var(--muted);">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
-      <a href="/admin/token" style="font-size:.8rem;">API Token</a>
+      <span style="color:var(--muted);">{{ user.username }} ({{ '超管' if user.role == 'super_admin' else '管理员' }})</span>
+      <a href="/admin/token">API Token</a>
       {% if user.role == 'super_admin' %}
-      <a href="/admin/users" style="font-size:.8rem;">用户管理</a>
+      <a href="/admin/users">用户管理</a>
       {% endif %}
       <a href="/admin/logout">退出登录</a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="切换为深色主题"><span id="themeIcon" aria-hidden="true">{{ icon("moon") }}</span></button>
     </nav>
   </header>
-  {% macro status_badge(active) %}<span class="vis-badge {{ 'vis-public' if active else 'vis-private' }}">{{ '● 运行中' if active else '○ 未激活' }}</span>{% endmacro %}
-  {% set copy_icon %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>{% endset %}
+  {% macro status_badge(active) %}<span class="vis-badge {{ 'vis-public' if active else 'vis-private' }}">{{ icon("circle-dot" if active else "circle") }}{{ "运行中" if active else "未激活" }}</span>{% endmacro %}
+  {% set copy_icon %}{{ icon("copy") }}{% endset %}
+  {% macro site_actions(site) %}
+  <div class="site-actions">
+    <button type="button" class="more-button" aria-label="{{ site.title }}的更多操作" aria-haspopup="menu" aria-expanded="false">{{ icon("ellipsis-vertical") }}</button>
+    <div class="actions-menu" role="menu" hidden>
+      <a role="menuitem" href="{{ site.url }}" target="_blank" rel="noopener">{{ icon("external-link") }}打开</a>
+      <button role="menuitem" type="button" class="download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>{{ icon("download") }}下载 ZIP</button>
+      <button role="menuitem" type="button" class="view-history" data-url="/admin/sites/{{ site.id }}/history" data-title="{{ site.title }}">{{ icon("history") }}查看历史版本</button>
+    </div>
+  </div>
+  {% endmacro %}
   <main>
     {% if sites %}
     <div class="search-card">
@@ -587,7 +660,7 @@
           <th class="visibility-col">状态</th>
           {% if user.role == 'super_admin' %}<th class="owner-col">所有者</th>{% endif %}
           <th class="uploaded-col">部署时间</th>
-          <th class="actions-col">操作</th>
+          <th class="actions-col" aria-label="站点操作"></th>
         </tr>
       </thead>
       <tbody>
@@ -618,10 +691,7 @@
           {% if user.role == 'super_admin' %}<td class="owner-col" style="font-size:.8rem;color:var(--muted);"><span class="owner-text" title="{{ site.owner_name or '—' }}">{{ site.owner_name or '—' }}</span></td>{% endif %}
           <td class="ts">{{ deployed_at[:16].replace("T"," ") }}</td>
           <td class="actions-col">
-            <div class="ops-cell">
-              <a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开</a>
-              <button type="button" class="action-btn action-btn-download download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
-            </div>
+            {{ site_actions(site) }}
           </td>
         </tr>
         {% endfor %}
@@ -641,7 +711,7 @@
            data-date="{{ deployed_at[:10] }}">
         <div class="page-card-title">
           <span>{{ site.title }}</span>
-          {{ status_badge(site.active_deployment_id) }}
+          {{ site_actions(site) }}
         </div>
         <div class="page-card-links">
           {% if site.active_deployment_id %}
@@ -655,14 +725,12 @@
             <button class="copy-btn" title="复制站点链接" onclick="copyLink(this, '{{ site.url }}')">{{ copy_icon }}</button>
           </div>
         </div>
+        {{ status_badge(site.active_deployment_id) }}
         <div class="page-card-meta">
           <span class="ts">{{ deployed_at[:16].replace("T"," ") }}</span>
           <span class="ts">{{ site.file_count }} 文件 · {{ site.static_size_label }} · {{ site.runtime_document_count }} 数据文档</span>
         </div>
-        <div class="page-card-actions">
-          <a class="action-btn" href="{{ site.url }}" target="_blank" rel="noopener">打开站点</a>
-          <button type="button" class="action-btn action-btn-download download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>下载 ZIP</button>
-        </div>
+
       </div>
       {% endfor %}
     </div>
@@ -671,6 +739,14 @@
     <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
   </main>
+
+  <dialog class="history-drawer" id="history-drawer" aria-labelledby="history-title">
+    <div class="history-head">
+      <div><h2 id="history-title">历史版本</h2><p id="history-site-title"></p></div>
+      <button type="button" class="history-close" aria-label="关闭历史版本" autofocus>{{ icon("x") }}</button>
+    </div>
+    <div class="history-list" id="history-list" aria-live="polite"></div>
+  </dialog>
 
   <div class="modal-overlay" id="large-download-modal" role="dialog" aria-modal="true" aria-labelledby="large-download-title">
     <div class="modal-card">
@@ -694,7 +770,7 @@
 
     function updateThemeButton() {
       const dark = document.documentElement.dataset.theme === "dark";
-      themeIcon.textContent = dark ? "☀️" : "🌙";
+      themeIcon.innerHTML = iconMarkup(dark ? "sun" : "moon");
       themeButton.setAttribute("aria-label", dark ? "切换为浅色主题" : "切换为深色主题");
     }
 
@@ -706,8 +782,11 @@
     });
     updateThemeButton();
 
-    const COPY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
-    const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    function iconMarkup(name) {
+      return `<svg class="lucide" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><use href="#lucide-${name}"></use></svg>`;
+    }
+    const COPY_SVG = iconMarkup("copy");
+    const CHECK_SVG = iconMarkup("check");
 
     function plainCopy(value) {
       const textarea = document.createElement("textarea");
@@ -781,6 +860,125 @@
       if (event.key === "Escape") closeLargeDownload();
     });
 
+
+    let openMenu = null;
+    let menuTrigger = null;
+    function closeMenu(restoreFocus = false) {
+      if (!openMenu) return;
+      openMenu.hidden = true;
+      menuTrigger.setAttribute("aria-expanded", "false");
+      if (restoreFocus) menuTrigger.focus();
+      openMenu = null;
+    }
+    document.querySelectorAll(".more-button").forEach(trigger => {
+      const menu = trigger.nextElementSibling;
+      trigger.addEventListener("click", () => {
+        const wasOpen = openMenu === menu;
+        closeMenu();
+        if (wasOpen) return;
+        openMenu = menu;
+        menuTrigger = trigger;
+        // Portal the menu outside the scrolling table to prevent clipping.
+        document.body.appendChild(menu);
+        menu.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        const rect = trigger.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 8))}px`;
+        menu.style.top = `${Math.max(8, Math.min(rect.bottom + 4, innerHeight - menu.offsetHeight - 8))}px`;
+        menu.querySelector('[role="menuitem"]:not(:disabled)').focus();
+      });
+    });
+    document.addEventListener("click", event => {
+      if (openMenu && !openMenu.contains(event.target) && !menuTrigger.contains(event.target)) closeMenu();
+    });
+    document.addEventListener("keydown", event => {
+      if (!openMenu) return;
+      if (event.key === "Escape") { event.preventDefault(); closeMenu(true); }
+      else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const items = [...openMenu.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+        const index = items.indexOf(document.activeElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next].focus();
+      } else if (event.key === "Tab") closeMenu(true);
+    });
+    window.addEventListener("resize", () => closeMenu());
+    document.addEventListener("scroll", () => closeMenu(), true);
+
+    const historyDrawer = document.getElementById("history-drawer");
+    const historyList = document.getElementById("history-list");
+    let historyRequest = null;
+    let historyTrigger = null;
+    historyDrawer.querySelector(".history-close").addEventListener("click", () => historyDrawer.close());
+    historyDrawer.addEventListener("click", event => {
+      if (event.target === historyDrawer && event.clientX < historyDrawer.getBoundingClientRect().left) historyDrawer.close();
+    });
+    historyDrawer.addEventListener("close", () => {
+      historyRequest?.abort();
+      historyTrigger?.focus();
+    });
+    function historyElement(tag, className, text) {
+      const element = document.createElement(tag);
+      element.className = className;
+      element.textContent = text;
+      return element;
+    }
+    async function loadHistory(url) {
+      historyRequest?.abort();
+      const request = new AbortController();
+      historyRequest = request;
+      historyList.replaceChildren(historyElement("p", "history-message", "正在加载历史版本…"));
+      historyList.setAttribute("aria-busy", "true");
+      try {
+        const response = await fetch(url, {signal: request.signal, headers: {Accept: "application/json"}});
+        if (response.redirected) throw new Error("登录已过期，请刷新页面后重试。");
+        if (!response.ok) throw new Error(response.status === 403 ? "无权查看此站点的历史版本。" : "历史版本加载失败，请重试。");
+        const data = await response.json();
+        if (request.signal.aborted) return;
+        historyList.replaceChildren();
+        if (!data.deployments.length) historyList.append(historyElement("p", "history-message", "暂无历史版本。"));
+        data.deployments.forEach(version => {
+          const item = historyElement("article", "history-item", "");
+          const top = historyElement("div", "history-item-top", "");
+          const time = value => value ? value.slice(0, 16).replace("T", " ") : "—";
+          const created = historyElement("time", "", time(version.created_at));
+          if (version.created_at) created.dateTime = version.created_at;
+          top.append(created, historyElement("span", "history-detail", `${version.file_count} 个文件 · ${formatBytes(version.total_size)}`));
+          if (version.current) top.append(historyElement("span", "vis-badge vis-public", "当前版本"));
+          item.append(top);
+          const versionRow = historyElement(version.url ? "a" : "div", version.url ? "history-link" : "history-version", "");
+          versionRow.append(historyElement("span", "history-id", version.id));
+          if (version.url) {
+            versionRow.insertAdjacentHTML("beforeend", iconMarkup("external-link"));
+            versionRow.href = version.url;
+            versionRow.target = "_blank";
+            versionRow.rel = "noopener";
+            versionRow.setAttribute("aria-label", `打开版本 ${version.id}（新窗口）`);
+          }
+          item.append(versionRow);
+          historyList.append(item);
+        });
+      } catch (error) {
+        if (request.signal.aborted) return;
+        const retry = historyElement("button", "history-retry", "重试");
+        retry.type = "button";
+        retry.addEventListener("click", () => loadHistory(url));
+        historyList.replaceChildren(historyElement("p", "history-message", error.message), retry);
+      } finally {
+        if (historyRequest === request) historyList.setAttribute("aria-busy", "false");
+      }
+    }
+    document.querySelectorAll(".view-history").forEach(button => {
+      button.addEventListener("click", () => {
+        historyTrigger = menuTrigger;
+        closeMenu();
+        document.getElementById("history-site-title").textContent = button.dataset.title;
+        historyDrawer.showModal();
+        loadHistory(button.dataset.url);
+      });
+    });
+    document.querySelectorAll('.actions-menu a, .download-site').forEach(item => item.addEventListener("click", () => closeMenu(true)));
+
     const sKeyword = document.getElementById("s-keyword");
     const sOwner = document.getElementById("s-owner");
     const sFrom = document.getElementById("s-from");
@@ -789,6 +987,7 @@
     const noMatch = document.getElementById("no-match");
 
     function applyFilter() {
+      closeMenu();
       if (!sKeyword) return;
       const keyword = sKeyword.value.trim().toLowerCase();
       const owner = sOwner ? sOwner.value : "";

@@ -878,6 +878,30 @@ async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db)
         })
 
 
+@app.get("/admin/sites/{site_id}/history")
+def admin_site_history(
+    site_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    user: dict = Depends(get_current_user),
+):
+    site = db.execute("SELECT * FROM sites WHERE id = ?", (site_id,)).fetchone()
+    if not site:
+        raise HTTPException(404, "站点不存在")
+    if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
+        raise HTTPException(403, "无权查看此站点")
+    rows = db.execute(
+        """SELECT id, state, created_at, activated_at, file_count, total_size
+           FROM deployments WHERE site_id = ? ORDER BY created_at DESC, rowid DESC""",
+        (site_id,),
+    ).fetchall()
+    return {"deployments": [
+        {**dict(row), "current": row["id"] == site["active_deployment_id"],
+         "url": f"/_deployments/{quote(row['id'])}/"
+         if row["state"] in ("active", "superseded") else None}
+        for row in rows
+    ]}
+
+
 @app.get("/admin/sites/{site_id}/download")
 def download_site_archive(
     site_id: str,

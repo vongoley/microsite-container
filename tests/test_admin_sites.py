@@ -332,3 +332,44 @@ def test_document_scoped_writer_token_can_update_and_be_revoked(admin_client):
         json={"value": {"as_of": "2026-09-04"}},
     )
     assert denied.status_code == 401
+
+
+def test_admin_history_orders_versions_and_marks_current(admin_client):
+    client, db_path, token, owner_id = admin_client
+    site, deployment = deploy_runtime_site(client, token)
+    with sqlite3.connect(db_path) as con:
+        for version_id, state, created_at in (
+            ('old-version', 'superseded', '2020-01-01T00:00:00'),
+            ('next-version', 'staging', '2099-01-01T00:00:00'),
+        ):
+            con.execute(
+                """INSERT INTO deployments
+                   (id, site_id, state, entrypoint, file_count, total_size, created_at)
+                   VALUES (?, ?, ?, 'index.html', 1, 100, ?)""",
+                (version_id, site['id'], state, created_at),
+            )
+    response = client.get(f'/admin/sites/{site["id"]}/history')
+    assert response.status_code == 200
+    versions = response.json()['deployments']
+    assert [v['id'] for v in versions] == ['next-version', deployment['id'], 'old-version']
+    assert [v['current'] for v in versions] == [False, True, False]
+    assert versions[0]['url'] is None
+    assert versions[-1]['url'] == '/_deployments/old-version/'
+    assert client.get('/admin/sites/missing/history').status_code == 404
+    with sqlite3.connect(db_path) as con:
+        con.execute("UPDATE users SET role = 'admin' WHERE id = ?", (owner_id,))
+    assert client.get(f'/admin/sites/{site["id"]}/history').status_code == 200
+    with sqlite3.connect(db_path) as con:
+        con.execute("UPDATE sites SET owner_id = 'someone-else' WHERE id = ?", (site['id'],))
+    assert client.get(f'/admin/sites/{site["id"]}/history').status_code == 403
+    client.cookies.clear()
+    assert client.get(f'/admin/sites/{site["id"]}/history', follow_redirects=False).status_code in (302, 303, 401)
+
+
+def test_admin_history_empty_site(admin_client):
+    client, _db_path, token, _owner_id = admin_client
+    site = client.post('/api/sites', json={'slug': 'empty-history', 'title': 'Empty'},
+                       headers={'Authorization': f'Bearer {token}'}).json()
+    response = client.get(f'/admin/sites/{site["id"]}/history')
+    assert response.status_code == 200
+    assert response.json() == {'deployments': []}
