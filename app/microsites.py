@@ -177,6 +177,17 @@ def init_microsite_schema(db_path: Path) -> None:
             con.execute("ALTER TABLE deployments ADD COLUMN source_size INTEGER")
         if "source_format" not in deployment_columns:
             con.execute("ALTER TABLE deployments ADD COLUMN source_format TEXT")
+        site_columns = {row[1] for row in con.execute("PRAGMA table_info(sites)")}
+        if "visibility" not in site_columns:
+            con.execute("ALTER TABLE sites ADD COLUMN visibility TEXT NOT NULL DEFAULT 'users_all'")
+        if "view_password_hash" not in site_columns:
+            con.execute("ALTER TABLE sites ADD COLUMN view_password_hash TEXT")
+        if "access_epoch" not in site_columns:
+            con.execute("ALTER TABLE sites ADD COLUMN access_epoch INTEGER NOT NULL DEFAULT 0")
+        con.execute("""CREATE TABLE IF NOT EXISTS site_permissions (
+            site_id TEXT NOT NULL, user_id TEXT NOT NULL, granted_by TEXT NOT NULL,
+            PRIMARY KEY (site_id, user_id)
+        )""")
         init_runtime_schema(con)
         con.commit()
     finally:

@@ -591,6 +591,24 @@
     .actions-menu [role="menuitem"], .history-link { gap: 8px; }
     .actions-menu .lucide, .history-link .lucide { width: 16px; height: 16px; }
     .vis-badge .lucide { width: 12px; height: 12px; margin-right: 4px; }
+    .permission-dialog { margin: auto; width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); overflow-y: auto; }
+    .permission-dialog::backdrop { background: color-mix(in srgb, var(--black) 40%, transparent); }
+    .permission-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .permission-heading h2 { font-size: clamp(1.2rem, 1rem + 1vw, 1.4rem); }
+    .permission-heading p { color: var(--muted); margin: 6px 0 16px; overflow-wrap: anywhere; }
+    .permission-dialog fieldset { border: 0; min-width: 0; }
+    .permission-option { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px; border-radius: 8px; cursor: pointer; }
+    .permission-option:has(input:checked) { background: var(--accent-soft); }
+    .permission-option small { display: block; margin-top: 4px; color: var(--muted); }
+    .permission-dialog input[type="radio"], .permission-dialog input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px; flex-shrink: 0; }
+    .permission-dialog input[type="password"], .permission-dialog input[type="search"] { width: 100%; min-height: 44px; margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+    .permission-hint { font-size: .8rem; color: var(--muted); line-height: 1.5; margin: 12px 0; }
+    #permission-users { max-height: 180px; overflow: auto; }
+    #permission-users label { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+    #permission-message { color: var(--danger); margin: 8px 0; }
+    .permission-footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; }
+    .permission-footer button { min-height: 44px; min-width: 80px; }
+    @media (min-width: 768px) { .permission-dialog { padding: 24px; } }
   </style>
 </head>
 <body>
@@ -615,6 +633,7 @@
     <div class="actions-menu" role="menu" hidden>
       <a role="menuitem" href="{{ site.url }}" target="_blank" rel="noopener">{{ icon("external-link") }}打开</a>
       <button role="menuitem" type="button" class="download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>{{ icon("download") }}下载 ZIP</button>
+      <button role="menuitem" type="button" class="view-permissions" data-url="/admin/sites/{{ site.id }}/permissions" data-title="{{ site.title }}">{{ icon("shield") }}权限</button>
       <button role="menuitem" type="button" class="view-history" data-url="/admin/sites/{{ site.id }}/history" data-title="{{ site.title }}">{{ icon("history") }}查看历史版本</button>
     </div>
   </div>
@@ -739,6 +758,26 @@
     <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
   </main>
+
+  <dialog class="permission-dialog" id="permission-dialog" aria-labelledby="permission-title">
+    <form id="permission-form">
+      <div class="permission-heading"><div><h2 id="permission-title">访问权限</h2><p id="permission-site"></p></div><button class="history-close" type="button" id="permission-close" aria-label="关闭权限设置">{{ icon("x") }}</button></div>
+      <p id="permission-message" role="status"></p>
+      <fieldset id="permission-fields" disabled>
+        <legend class="permission-hint">谁可以查看站点</legend>
+        <label class="permission-option"><input type="radio" name="visibility" value="users_all"><span><strong>全部登录用户</strong><small>默认 · 注册并登录的用户可查看</small></span></label>
+        <label class="permission-option"><input type="radio" name="visibility" value="users_specific"><span><strong>指定用户</strong><small>仅选中的登录用户可查看</small></span></label>
+        <label class="permission-option"><input type="radio" name="visibility" value="private"><span><strong>仅自己</strong><small>仅站点所有者和超级管理员可查看</small></span></label>
+        <label class="permission-option"><input type="radio" name="visibility" value="password"><span><strong>密码访问</strong><small>持有访问密码的人可查看，无需登录</small></span></label>
+        <label class="permission-option"><input type="radio" name="visibility" value="public"><span><strong>公开</strong><small>任何人凭站点链接可查看，无需登录</small></span></label>
+        <div id="permission-password-panel" hidden><label for="permission-password">访问密码（至少 8 位）</label><input id="permission-password" type="password" maxlength="256" autocomplete="new-password" placeholder="输入访问密码"><p class="permission-hint" id="permission-password-hint"></p></div>
+        <div id="permission-users-panel" hidden><label for="permission-search">授权用户</label><input id="permission-search" type="search" placeholder="搜索用户名"><div id="permission-users"></div></div>
+        <p class="permission-hint">所有者与超级管理员始终可访问。查看权限不会授予编辑权限。</p>
+        <p class="permission-hint">保存权限后，旧分享链接和已验证的访问密码授权将失效，需重新生成分享或验证密码。</p>
+      </fieldset>
+      <div class="permission-footer"><button type="button" id="permission-cancel" class="action-btn">取消</button><button type="submit" id="permission-save" class="action-btn" disabled>保存权限</button></div>
+    </form>
+  </dialog>
 
   <dialog class="history-drawer" id="history-drawer" aria-labelledby="history-title">
     <div class="history-head">
@@ -978,6 +1017,74 @@
       });
     });
     document.querySelectorAll('.actions-menu a, .download-site').forEach(item => item.addEventListener("click", () => closeMenu(true)));
+
+    const permissionDialog = document.getElementById("permission-dialog");
+    const permissionForm = document.getElementById("permission-form");
+    const permissionFields = document.getElementById("permission-fields");
+    const permissionMessage = document.getElementById("permission-message");
+    const permissionSave = document.getElementById("permission-save");
+    let permissionUrl = "", permissionTrigger = null, permissionBusy = false, permissionRequest = null;
+    function updatePermissionPanels() {
+      const mode = permissionForm.elements.visibility.value;
+      document.getElementById("permission-password-panel").hidden = mode !== "password";
+      document.getElementById("permission-users-panel").hidden = mode !== "users_specific";
+    }
+    permissionForm.addEventListener("change", updatePermissionPanels);
+    document.getElementById("permission-search").addEventListener("input", event => {
+      const term = event.target.value.trim().toLowerCase();
+      document.querySelectorAll("#permission-users label").forEach(label => { label.hidden = !label.textContent.toLowerCase().includes(term); label.style.display = label.hidden ? "none" : ""; });
+    });
+    function closePermissions() { if (!permissionBusy) permissionDialog.close(); }
+    document.getElementById("permission-close").addEventListener("click", closePermissions);
+    document.getElementById("permission-cancel").addEventListener("click", closePermissions);
+    permissionDialog.addEventListener("cancel", event => { if (permissionBusy) event.preventDefault(); });
+    permissionDialog.addEventListener("close", () => { permissionRequest?.abort(); permissionTrigger?.focus(); });
+    document.querySelectorAll(".view-permissions").forEach(button => button.addEventListener("click", async () => {
+      permissionTrigger = menuTrigger;
+      closeMenu();
+      permissionUrl = button.dataset.url;
+      permissionForm.reset();
+      updatePermissionPanels();
+      permissionMessage.textContent = "正在加载权限…";
+      document.getElementById("permission-site").textContent = button.dataset.title;
+      permissionFields.disabled = permissionSave.disabled = true;
+      permissionDialog.showModal();
+      permissionRequest = new AbortController();
+      try {
+        const response = await fetch(permissionUrl, {signal: permissionRequest.signal});
+        if (response.status === 401) { location.assign('/admin/login'); return; }
+        if (!response.ok) throw new Error("无法读取权限，请关闭后重试");
+        const data = await response.json();
+        permissionForm.elements.visibility.value = data.visibility;
+        document.getElementById("permission-password-hint").textContent = data.has_password ? "已设置密码；留空保留现有密码。" : "尚未设置访问密码。";
+        const users = document.getElementById("permission-users"); users.replaceChildren();
+        data.users.forEach(user => {
+          const label = document.createElement("label");
+          const input = document.createElement("input"); input.type = "checkbox"; input.value = user.id; input.name = "allowed_user_ids";
+          input.checked = data.allowed_user_ids.includes(user.id);
+          const always = user.id === data.owner_id || user.role === "super_admin";
+          if (always) { input.checked = true; input.disabled = true; }
+          label.append(input, document.createTextNode(user.username + (always ? "（始终可访问）" : ""))); users.append(label);
+        });
+        updatePermissionPanels();
+        permissionMessage.textContent = "";
+        permissionFields.disabled = permissionSave.disabled = false;
+      } catch (error) { if (error.name !== "AbortError") permissionMessage.textContent = error.message; }
+    }));
+    permissionForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (permissionBusy) return;
+      const body = {visibility: permissionForm.elements.visibility.value, password: document.getElementById("permission-password").value,
+        allowed_user_ids: [...document.querySelectorAll('#permission-users input:checked:not(:disabled)')].map(input => input.value)};
+      permissionBusy = true; permissionSave.disabled = true; permissionSave.textContent = "保存中…";
+      try {
+        const response = await fetch(permissionUrl, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "保存失败，请重试");
+        permissionBusy = false; permissionDialog.close();
+      } catch (error) { permissionMessage.textContent = error.message; }
+      finally { permissionBusy = false; permissionSave.disabled = false; permissionSave.textContent = "保存权限"; }
+    });
 
     const sKeyword = document.getElementById("s-keyword");
     const sOwner = document.getElementById("s-owner");

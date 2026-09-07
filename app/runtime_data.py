@@ -574,11 +574,12 @@ def create_runtime_router(
         return FileResponse(
             SDK_PATH,
             media_type="application/javascript",
-            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            headers={"Cache-Control": "no-cache"},
         )
 
     @router.get("/api/runtime/sites/{site_slug}/documents/{document_key}")
     async def get_runtime_document(
+        request: Request,
         site_slug: str,
         document_key: str,
         db: sqlite3.Connection = Depends(get_db),
@@ -590,6 +591,12 @@ def create_runtime_router(
                 raise HTTPException(401, "Login required to read runtime data")
             raise HTTPException(403, "Not allowed to read this site's runtime data")
         payload, revision = _document_payload(db, config)
+        share = getattr(request.state, "site_share", None)
+        if share:
+            if config["read_policy"] != "public":
+                raise HTTPException(403, "Document is not shareable")
+            prefix = share["month"] + "-"
+            payload["value"] = {key: value for key, value in (payload["value"] or {}).items() if key.startswith(prefix)}
         return JSONResponse(
             payload,
             headers={"ETag": _etag(revision), "Cache-Control": "no-store"},

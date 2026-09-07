@@ -457,3 +457,16 @@ VIETNAMESE_LEARNING_HTML=/path/to/vietnamese-learning.html pytest -q
 ## License
 
 MIT
+
+
+### 站点访问与授权分享
+
+站点页面、静态资源和历史部署 URL 默认要求有效登录会话；浏览器导航未登录时跳转登录页，登录后返回原 URL。管理员可在站点菜单的“权限”中显式选择公开、密码访问、全部登录用户、指定用户或仅自己。Runtime Data 的 `read: public` 表示可按站点查看权限读取，`read: owner` 仍仅允许所有者；写入与私有源码继续校验所有者权限。
+
+训练日志按月份分享：所有者登录后调用 `POST /api/sites/{slug}/share-links`，JSON 为 `{"document":"training-plan","month":"2026-09"}`，获取 `/share/{随机凭证}/?view=share&month=2026-09` 链接。分享只允许读取对应站点的入口页、`assets/` 资源及对应月份的文档记录；完整 seed、其他月份、其他站点和写入操作不会获得授权。此接口目前支持以 ISO 日期为键的文档。
+
+旧的 `?view=share` 参数不能授权匿名访问，须重新生成分享链接。分享链接持有者均可读取已授权内容。通用站点若需要分享，应接入服务端授权流程；不要单凭前端参数放行。
+
+浏览器会话默认 720 小时，通过 `SESSION_TTL_HOURS` 配置，活跃使用时续期。SDK 地址不再长期 immutable 缓存；已有站点升级时应更新 SDK 引用的查询版本，以使旧缓存失效。
+
+权限保存在站点上，重新部署不会重置。默认模式 `users_all` 同样用于旧站点迁移。只有站点所有者与超级管理员可以通过 `/admin/sites/{site_id}/permissions` 的 GET / PUT 接口管理设置；访问密码至少 8 位，使用带随机盐的 PBKDF2 哈希保存。权限保存后旧分享链接和旧密码授权失效。

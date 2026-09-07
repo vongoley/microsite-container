@@ -33,7 +33,8 @@ ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "change-me-in-production")
 API_KEY = os.environ.get("API_KEY", "")
 SESSION_COOKIE = "admin_session"
-SESSION_TTL_HOURS = 24
+SESSION_HISTORY_COOKIE = "microsite_login_history"
+SESSION_TTL_HOURS = max(1, int(os.environ.get("SESSION_TTL_HOURS", "720")))
 TZ_BEIJING = timezone(timedelta(hours=8))
 ALLOWED_EXTENSIONS = (".html", ".md")
 SITE_EXPORT_WARNING_BYTES = 50 * 1024 * 1024
@@ -333,12 +334,12 @@ def _no_store(resp: Response) -> Response:
 
 
 def _safe_login_next(value) -> str:
-    """Allow login redirects only back to a local shared-document URL."""
+    """Allow login redirects only back to local document and site URLs."""
     if not value:
         return "/admin"
     try:
         parsed = urlsplit(value.strip())
-        if parsed.scheme or parsed.netloc or not parsed.path.startswith("/view/"):
+        if parsed.scheme or parsed.netloc or not parsed.path.startswith(("/view/", "/sites/", "/_deployments/")) or "\\" in value or any(ord(c) < 32 for c in value):
             return "/admin"
         return urlunsplit(("", "", parsed.path, parsed.query, ""))
     except Exception:
@@ -601,10 +602,110 @@ headings.forEach(h => observer.observe(h));
 async def lifespan(app: FastAPI):
     init_db()
     init_microsite_schema(DB_PATH)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS site_share_links (
+            token_hash TEXT PRIMARY KEY, site_id TEXT NOT NULL, document_key TEXT NOT NULL,
+            month TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+        )""")
     yield
 
 
 app = FastAPI(lifespan=lifespan)
+@app.middleware("http")
+async def renew_browser_session(request: Request, call_next):
+    token = request.cookies.get(SESSION_COOKIE)
+    original_path = request.url.path
+    protected_site = original_path.startswith(("/sites/", "/_deployments/"))
+    protected_api = original_path.startswith("/api/runtime/sites/")
+    share_match = re.fullmatch(r"/share/([A-Za-z0-9_-]+)/?(.*)", original_path)
+    share_token = share_match[1] if share_match else request.headers.get("X-Microsite-Share", "")
+    share = None
+    with sqlite3.connect(DB_PATH) as db:
+        db.row_factory = sqlite3.Row
+        user = resolve_optional_user(request, db)
+        target_site = None
+        if original_path.startswith("/sites/"):
+            slug = original_path.split("/")[2]
+            target_site = db.execute("SELECT * FROM sites WHERE slug=?", (slug,)).fetchone()
+        elif original_path.startswith("/_deployments/"):
+            deployment_id = original_path.split("/")[2]
+            target_site = db.execute("SELECT s.* FROM sites s JOIN deployments d ON d.site_id=s.id WHERE d.id=?", (deployment_id,)).fetchone()
+        elif protected_api:
+            slug = original_path.split("/")[4]
+            target_site = db.execute("SELECT * FROM sites WHERE slug=?", (slug,)).fetchone()
+        allowed = site_user_can_view(db, target_site, user, request) if target_site else bool(user)
+        if share_token:
+            share = db.execute(
+                """SELECT l.*, s.slug FROM site_share_links l JOIN sites s ON s.id=l.site_id
+                   JOIN users u ON u.id=l.created_by AND u.is_active=1
+                   WHERE l.token_hash=?""",
+                (hashlib.sha256(share_token.encode()).hexdigest(),),
+            ).fetchone()
+    if share_match:
+        if not share or request.method not in ("GET", "HEAD"):
+            return JSONResponse({"detail": "Share link not found"}, status_code=404)
+        asset = share_match[2]
+        if asset not in ("", "index.html") and not asset.startswith("assets/"):
+            return JSONResponse({"detail": "Asset not shared"}, status_code=404)
+        if not asset and (request.query_params.get("view") != "share" or request.query_params.get("month") != share["month"] or not original_path.endswith("/")):
+            return RedirectResponse(f"/share/{share_token}/?view=share&month={share['month']}", status_code=303, headers={"Cache-Control": "no-store"})
+        request.scope["path"] = f"/sites/{share['slug']}/{asset}"
+        request.scope["raw_path"] = request.scope["path"].encode()
+        request.state.site_share = dict(share)
+    elif protected_site and not allowed:
+        if target_site and target_site["visibility"] == "password":
+            url = f"/site-unlock/{target_site['id']}?next={quote(original_path + ('?' + request.url.query if request.url.query else ''), safe='')}"
+            return RedirectResponse(url, status_code=303, headers={"Cache-Control": "no-store"})
+        if user:
+            return JSONResponse({"detail": "无权访问此站点"}, status_code=403, headers={"Cache-Control": "no-store"})
+        if request.headers.get("sec-fetch-dest", "document") == "document":
+            return _no_store(_login_redirect(request))
+        return JSONResponse({"detail": "Login required"}, status_code=401, headers={"Cache-Control": "no-store"})
+    elif protected_api and not allowed:
+        shared_endpoint = f"/api/runtime/sites/{share['slug']}/documents/{share['document_key']}" if share else ""
+        if share and request.method == "GET" and original_path == shared_endpoint:
+            request.state.site_share = dict(share)
+        elif not request.headers.get("Authorization"):
+            return JSONResponse({"detail": "无权访问此站点" if user else "Login required"}, status_code=403 if user else 401, headers={"Cache-Control": "no-store"})
+    if target_site and user and not allowed and not share_match:
+        shared_read = share and protected_api and request.method == "GET" and original_path == f"/api/runtime/sites/{share['slug']}/documents/{share['document_key']}"
+        if not shared_read:
+            return JSONResponse({"detail": "无权访问此站点"}, status_code=403, headers={"Cache-Control": "no-store"})
+    # Share credentials restrict the returned document even when the viewer is logged in.
+    if share and protected_api and request.method == "GET" and original_path == f"/api/runtime/sites/{share['slug']}/documents/{share['document_key']}":
+        request.state.site_share = dict(share)
+    response = await call_next(request)
+    if protected_site or share_match:
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    # Never replace a cookie explicitly set by login/logout handlers.
+    if not token or "set-cookie" in response.headers:
+        return response
+    user_id = verify_session_token(token)
+    if not user_id:
+        return response
+    issued_at = int(token.rsplit(":", 1)[0].rsplit(":", 1)[1])
+    age = datetime.now(TZ_BEIJING).timestamp() - issued_at
+    if age < min(12 * 3600, SESSION_TTL_HOURS * 1800):
+        if not request.cookies.get(SESSION_HISTORY_COOKIE):
+            response.set_cookie(SESSION_HISTORY_COOKIE, "1", httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=365 * 86400)
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
+    with sqlite3.connect(DB_PATH) as db:
+        row = db.execute(
+            "SELECT username FROM users WHERE id = ? AND is_active = 1", (user_id,)
+        ).fetchone()
+    if row:
+        response.set_cookie(
+            SESSION_COOKIE, make_session_token(user_id, row[0]),
+            httponly=True, samesite="lax", secure=COOKIE_SECURE,
+            max_age=SESSION_TTL_HOURS * 3600,
+        )
+        response.set_cookie(SESSION_HISTORY_COOKIE, "1", httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=365 * 86400)
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.include_router(create_microsite_router(get_db, get_api_user))
 app.include_router(create_data_router(get_db))
@@ -741,6 +842,151 @@ async def unlock_page(
 
 # ── Admin: login ──────────────────────────────────────────────────────────────
 
+def site_user_can_view(db, site, user, request=None):
+    if site["visibility"] == "public":
+        return True
+    if site["visibility"] == "password" and request:
+        cookie = request.cookies.get("site_pw_" + site["id"], "")
+        if site["view_password_hash"] and verify_pv_token(cookie, site["id"], site["access_epoch"], site["view_password_hash"]):
+            return True
+    if not user:
+        return False
+    if user["role"] == "super_admin" or site["owner_id"] == user["id"]:
+        return True
+    if site["visibility"] == "users_all":
+        return True
+    if site["visibility"] == "users_specific":
+        return db.execute("SELECT 1 FROM site_permissions WHERE site_id=? AND user_id=?", (site["id"], user["id"])).fetchone() is not None
+    return False
+
+
+def managed_site(request, db, site_id):
+    user = resolve_optional_user(request, db)
+    if not user:
+        raise HTTPException(401, "请先登录")
+    site = db.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchone()
+    if not site:
+        raise HTTPException(404, "站点不存在")
+    if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
+        raise HTTPException(403, "仅所有者或超级管理员可管理权限")
+    return site, user
+
+
+@app.get("/admin/sites/{site_id}/permissions")
+def get_site_permissions(site_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    site, user = managed_site(request, db, site_id)
+    return {"visibility": site["visibility"], "owner_id": site["owner_id"],
+            "users": [dict(row) for row in db.execute("SELECT id, username, role FROM users WHERE is_active=1 ORDER BY username")],
+            "has_password": bool(site["view_password_hash"]),
+            "allowed_user_ids": [row[0] for row in db.execute("SELECT user_id FROM site_permissions WHERE site_id=?", (site_id,))]}
+
+
+@app.put("/admin/sites/{site_id}/permissions")
+async def update_site_permissions(site_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    site, user = managed_site(request, db, site_id)
+    body = await request.json()
+    visibility = body.get("visibility")
+    if visibility not in VALID_VISIBILITY:
+        raise HTTPException(422, "无效的权限模式")
+    ids = body.get("allowed_user_ids", []) if visibility == "users_specific" else []
+    if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
+        raise HTTPException(422, "无效的用户列表")
+    ids = list(dict.fromkeys(ids))
+    if visibility == "users_specific" and not ids:
+        raise HTTPException(422, "请至少选择一个用户")
+    for value in ids:
+        if not db.execute("SELECT 1 FROM users WHERE id=? AND is_active=1", (value,)).fetchone():
+            raise HTTPException(422, "授权用户不存在或已停用")
+    password = body.get("password", "")
+    if not isinstance(password, str) or len(password) > 256:
+        raise HTTPException(422, "密码格式无效")
+    password_hash = site["view_password_hash"] if visibility == "password" else None
+    if visibility == "password":
+        if password:
+            if len(password) < 8:
+                raise HTTPException(422, "访问密码至少 8 位")
+            salt = secrets.token_hex(16)
+            password_hash = salt + "$" + hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200000).hex()
+        elif not password_hash:
+            raise HTTPException(422, "请设置访问密码")
+    db.execute("UPDATE sites SET visibility=?, view_password_hash=?, access_epoch=access_epoch+1 WHERE id=?", (visibility, password_hash, site_id))
+    db.execute("DELETE FROM site_permissions WHERE site_id=?", (site_id,))
+    db.executemany("INSERT INTO site_permissions VALUES (?, ?, ?)", [(site_id, value, user["id"]) for value in ids])
+    # Previously issued guest links must not bypass a tightened access policy.
+    db.execute("DELETE FROM site_share_links WHERE site_id=?", (site_id,))
+    db.commit()
+    return {"status": "ok", "visibility": visibility}
+
+
+@app.post("/api/sites/{site_slug}/share-links", status_code=201)
+async def create_site_share(site_slug: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    user = resolve_optional_user(request, db)
+    if not user:
+        raise HTTPException(401, "Login required")
+    site = db.execute("SELECT * FROM sites WHERE slug=?", (site_slug,)).fetchone()
+    if not site:
+        raise HTTPException(404, "Site not found")
+    if user["role"] != "super_admin" and user["id"] != site["owner_id"]:
+        raise HTTPException(403, "Only the site owner can create share links")
+    body = await request.json()
+    month = body.get("month", "")
+    document_key = body.get("document", "")
+    if not isinstance(month, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month):
+        raise HTTPException(422, "A valid month is required")
+    if not isinstance(document_key, str):
+        raise HTTPException(422, "Invalid document")
+    config = db.execute("SELECT * FROM site_document_configs WHERE site_id=? AND document_key=? AND active_deployment_id=?",
+                        (site["id"], document_key, site["active_deployment_id"])).fetchone()
+    if not config or config["read_policy"] != "public":
+        raise HTTPException(403, "Document is not shareable")
+    document = db.execute("SELECT value_json FROM site_documents WHERE site_id=? AND document_key=?", (site["id"], document_key)).fetchone()
+    value = json.loads(document["value_json"]) if document else None
+    if not isinstance(value, dict) or any(not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", key) for key in value):
+        raise HTTPException(422, "Monthly sharing requires a date-keyed document")
+    share_token = secrets.token_urlsafe(32)
+    db.execute("INSERT INTO site_share_links VALUES (?, ?, ?, ?, ?, ?)",
+               (hashlib.sha256(share_token.encode()).hexdigest(), site["id"], document_key, month, user["id"], datetime.now(TZ_BEIJING).isoformat()))
+    db.commit()
+    return JSONResponse({"url": f"/share/{share_token}/?view=share&month={month}"}, status_code=201, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/session")
+def browser_session(request: Request, site: str = "", db: sqlite3.Connection = Depends(get_db)):
+    user = resolve_optional_user(request, db)
+    target = db.execute("SELECT * FROM sites WHERE slug=?", (site,)).fetchone() if site else None
+    allowed = site_user_can_view(db, target, user, request) if target else user is not None
+    redirect_url = f"/site-unlock/{target['id']}?next={quote('/sites/' + target['slug'] + '/', safe='')}" if target and target["visibility"] == "password" else None
+    return JSONResponse({"authenticated": user is not None, "login_required": not allowed and (not user or bool(redirect_url)), "redirect_url": redirect_url}, headers={"Cache-Control": "no-store"})
+
+
+@app.api_route("/site-unlock/{site_id}", methods=["GET", "POST"], response_class=HTMLResponse)
+async def unlock_site(site_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
+    site = db.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchone()
+    if not site or site["visibility"] != "password":
+        raise HTTPException(404, "站点不存在或未设置密码")
+    next_path = _safe_login_next(request.query_params.get("next", ""))
+    if next_path == "/admin":
+        next_path = f"/sites/{site['slug']}/"
+    error = None
+    status = 200
+    if request.method == "POST":
+        ip = request.client.host if request.client else "unknown"
+        if not _unlock_rate_ok(ip, "site:" + site_id):
+            raise HTTPException(429, "尝试次数过多，请稍后重试")
+        form = await request.form()
+        password = str(form.get("password", ""))
+        salt, expected = site["view_password_hash"].split("$", 1)
+        actual = hashlib.pbkdf2_hmac("sha256", password[:257].encode(), salt.encode(), 200000).hex()
+        if len(password) <= 256 and hmac.compare_digest(expected, actual):
+            response = RedirectResponse(next_path, status_code=303)
+            response.set_cookie("site_pw_" + site_id, make_pv_token(site_id, site["access_epoch"], site["view_password_hash"]), httponly=True, secure=COOKIE_SECURE, samesite="lax", max_age=PV_TTL_HOURS * 3600)
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        _unlock_record_fail(ip, "site:" + site_id)
+        error, status = "访问密码错误", 401
+    return templates.TemplateResponse(request, "site_password.html", {"title": site["title"], "error": error}, status_code=status, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/admin/login", response_class=HTMLResponse)
 async def login_page(request: Request, next: str = ""):
     return templates.TemplateResponse(
@@ -764,6 +1010,7 @@ async def login(
         token = make_session_token(user["id"], user["username"])
         resp = RedirectResponse(url=safe_redirect, status_code=303)
         resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=SESSION_TTL_HOURS * 3600)
+        resp.set_cookie(SESSION_HISTORY_COOKIE, "1", httponly=True, samesite="lax", secure=COOKIE_SECURE, max_age=365 * 86400)
         return resp
     return templates.TemplateResponse(
         request,
@@ -777,6 +1024,7 @@ async def login(
 async def logout():
     resp = RedirectResponse(url="/admin/login", status_code=303)
     resp.delete_cookie(SESSION_COOKIE)
+    resp.delete_cookie(SESSION_HISTORY_COOKIE)
     return resp
 
 

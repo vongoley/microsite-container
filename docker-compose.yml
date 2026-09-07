@@ -11,6 +11,7 @@ services:
       # Generate with: python3 -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
       - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-720}
       - COOKIE_SECURE=${COOKIE_SECURE:-0}
       - API_KEY=${API_KEY}
       - MICROSITE_DATA_DIR=${MICROSITE_DATA_DIR:-/app/app/data/microsites}

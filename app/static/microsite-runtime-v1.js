@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const shareToken = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]+)\//)?.[1];
   const DOCUMENT_KEY_RE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 
   class MicrositeDataError extends Error {
@@ -37,9 +38,22 @@
     return fallback;
   }
 
+  function loginUrl() {
+    return `/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  }
+
+  let redirectingToLogin = false;
+  function redirectToLogin(destination) {
+    if (redirectingToLogin) return;
+    redirectingToLogin = true;
+    window.dispatchEvent(new CustomEvent("microsite:before-login"));
+    window.location.assign(typeof destination === "string" ? destination : loginUrl());
+  }
+
   async function readResponse(response) {
     const payload = await response.json().catch(() => null);
     if (response.ok) return payload;
+    if (response.status === 401) redirectToLogin();
     const detail = payload?.detail;
     const message = detailMessage(detail, `Runtime data request failed (${response.status})`);
     if (response.status === 409) {
@@ -60,12 +74,13 @@
     const site = options.site || detectSiteSlug();
     const endpoint = `/api/runtime/sites/${encodeURIComponent(site)}/documents/${encodeURIComponent(documentKey)}`;
     const draftKey = `microsite-runtime:${site}:${documentKey}:draft:v1`;
+    const recoveryKey = `${draftKey}:login-recovery`;
     let revision = null;
     let value;
 
     function loadDraft() {
       try {
-        const raw = window.localStorage.getItem(draftKey);
+        const raw = window.localStorage.getItem(draftKey) || window.localStorage.getItem(recoveryKey);
         return raw ? JSON.parse(raw) : null;
       } catch (error) {
         throw new MicrositeDataError(`Cannot read local draft: ${error.message}`);
@@ -109,7 +124,7 @@
           method: "GET",
           credentials: "same-origin",
           cache: "no-store",
-          headers: { Accept: "application/json" },
+          headers: { Accept: "application/json", ...(shareToken ? {"X-Microsite-Share": shareToken} : {}) },
         });
         const payload = await readResponse(response);
         revision = payload.revision;
@@ -133,9 +148,16 @@
           },
           body: JSON.stringify({ value: nextValue }),
         });
+        if (response.status === 401) {
+          // Separate recovery storage survives older clients clearing their draft on error.
+          window.localStorage.setItem(recoveryKey, JSON.stringify({
+            value: nextValue, baseRevision: expectedRevision, savedAt: new Date().toISOString(),
+          }));
+        }
         const payload = await readResponse(response);
         revision = payload.revision;
         value = payload.value;
+        window.localStorage.removeItem(recoveryKey);
         clearDraft();
         return payload;
       },
@@ -145,10 +167,40 @@
     };
   }
 
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const response = await originalFetch(...args);
+    const url = new URL(typeof args[0] === "string" ? args[0] : args[0]?.url || args[0], window.location.href);
+    if (response.status === 401 && url.origin === window.location.origin) {
+      // Let the caller persist the submitted draft before navigation.
+      window.setTimeout(redirectToLogin, 0);
+    }
+    return response;
+  };
+  let sessionCheck = null;
+  function checkBrowserSession() {
+    if (shareToken || redirectingToLogin || sessionCheck) return sessionCheck;
+    sessionCheck = originalFetch("/api/session?site=" + encodeURIComponent(window.document.body.dataset.siteSlug || window.location.pathname.match(/^\/sites\/([^/]+)/)?.[1] || ""), {credentials: "same-origin", cache: "no-store"})
+      .then(async response => {
+        if (response.ok) {
+          const session = await response.json();
+          if (session.login_required) redirectToLogin(session.redirect_url);
+        }
+      }).catch(() => {}).finally(() => { sessionCheck = null; });
+    return sessionCheck;
+  }
+  window.addEventListener("pageshow", checkBrowserSession);
+  window.addEventListener("focus", checkBrowserSession);
+  window.document.addEventListener("click", checkBrowserSession, true);
+  window.document.addEventListener("change", checkBrowserSession, true);
+  window.document.addEventListener("keydown", checkBrowserSession, true);
+  checkBrowserSession();
+
   window.MicrositeData = Object.freeze({
     version: 1,
     document,
     detectSiteSlug,
+    loginUrl,
     Error: MicrositeDataError,
     ConflictError: MicrositeDataConflictError,
   });
