@@ -391,7 +391,7 @@ def test_session_renewal_and_site_login_return(admin_client):
     assert 'no-store' in response.headers['cache-control']
     client.cookies.clear()
     assert client.get('/api/session').json()['authenticated'] is False
-    target = '/sites/training-log/?month=2026-09'
+    target = '/sites/sample-site/?month=2026-09'
     response = client.post('/admin/login', data={'username': username, 'password': 'login-test', 'redirect_to': target}, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers['location'] == target
@@ -505,3 +505,47 @@ def test_site_permission_modes_and_revocation(admin_client):
     assert client.get('/sites/export-site/').status_code == 200
     client.cookies.clear()
     assert client.get('/sites/export-site/', follow_redirects=False).status_code == 303
+
+
+def test_generic_share_scopes_do_not_require_date_keys(admin_client):
+    client, db_path, token, owner_id = admin_client
+    site, _ = deploy_runtime_site(client, token)
+    value = {"public/item": {"text": "visible"}, "private/item": "hidden"}
+    with sqlite3.connect(db_path) as db:
+        db.execute("UPDATE site_documents SET value_json=? WHERE site_id=?", (json.dumps(value), site["id"]))
+    endpoint = "/api/sites/export-site/share-links"
+    scoped = client.post(endpoint, json={"document": "settings", "scope": {"type": "key-prefix", "prefix": "public/"}})
+    assert scoped.status_code == 201
+    whole = client.post(endpoint, json={"document": "settings", "scope": {"type": "document"}})
+    assert whole.status_code == 201
+    for scope in ({"type": "key-prefix", "prefix": ""}, {"type": "unknown"}, {"type": "document", "extra": True}):
+        assert client.post(endpoint, json={"document": "settings", "scope": scope}).status_code == 422
+    assert client.post(endpoint, json={"document": "settings", "month": "2026-09", "scope": {"type": "document"}}).status_code == 422
+    client.cookies.clear()
+    runtime = "/api/runtime/sites/export-site/documents/settings"
+    for response, expected in ((scoped, {"public/item": value["public/item"]}), (whole, value)):
+        url = response.json()["url"]
+        assert client.get(url).status_code == 200
+        headers = {"X-Microsite-Share": url.split("/")[2]}
+        assert client.get(runtime + "?month=other&prefix=private/", headers=headers).json()["value"] == expected
+        assert client.put(runtime, json={"value": {}}, headers={**headers, "If-Match": '\"rev-1\"'}).status_code == 401
+        assert client.get("/api/runtime/sites/other/documents/settings", headers=headers).status_code == 401
+    with sqlite3.connect(db_path) as db:
+        db.execute("UPDATE site_documents SET value_json=? WHERE site_id=?", (json.dumps(["changed type"]), site["id"]))
+    assert client.get(runtime, headers={"X-Microsite-Share": scoped.json()["url"].split("/")[2]}).status_code == 403
+    assert client.get(runtime, headers={"X-Microsite-Share": whole.json()["url"].split("/")[2]}).json()["value"] == ["changed type"]
+
+
+def test_existing_share_table_migrates_without_revoking_legacy_links(admin_client):
+    client, db_path, token, _ = admin_client
+    site, _ = deploy_runtime_site(client, token)
+    with sqlite3.connect(db_path) as db:
+        db.execute("UPDATE site_documents SET value_json=? WHERE site_id=?", (json.dumps({"2026-09-01": "visible"}), site["id"]))
+    result = client.post("/api/sites/export-site/share-links", json={"document": "settings", "month": "2026-09"})
+    url = result.json()["url"]
+    with sqlite3.connect(db_path) as db:
+        db.execute("ALTER TABLE site_share_links DROP COLUMN scope_json")
+    with TestClient(main.app) as migrated:
+        assert migrated.get(url).status_code == 200
+        result = migrated.get("/api/runtime/sites/export-site/documents/settings", headers={"X-Microsite-Share": url.split("/")[2]})
+        assert result.json()["value"] == {"2026-09-01": "visible"}

@@ -388,7 +388,17 @@ def command_manifest(args):
     }
 
 
+def require_site_workspace(path: Path) -> None:
+    """Never pull or publish site files from within the container platform tree."""
+    resolved = path.expanduser().resolve()
+    for parent in (resolved, *resolved.parents):
+        if (parent / "app/microsites.py").is_file() and (parent / "app/skill/deploy.py").is_file():
+            raise CliError("Site work belongs outside the container repository; use skill pull in an external directory, then deploy there.")
+
+
 def command_deploy(args):
+    require_site_workspace(Path(args.source_dir))
+    require_site_workspace(Path(args.publish_dir))
     base_url, api_key = load_config()
     args.slug = args.slug.strip().lower()
     publish_dir = Path(args.publish_dir)
@@ -442,6 +452,7 @@ def command_deploy(args):
 
 
 def command_pull(args):
+    require_site_workspace(Path(args.out))
     base_url, api_key = load_config()
     slug = args.slug.strip().lower()
     destination = Path(args.out).expanduser().resolve()

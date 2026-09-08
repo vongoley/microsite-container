@@ -2,8 +2,6 @@ import hashlib
 import importlib.util
 import io
 import json
-import os
-import re
 from argparse import Namespace
 import sqlite3
 import zipfile
@@ -414,14 +412,10 @@ def test_skill_cli_runtime_token_create_uses_deployment_credentials(monkeypatch)
     }
 
 
-def test_real_vietnamese_page_full_deployment(client):
-    source = os.environ.get("VIETNAMESE_LEARNING_HTML")
-    if not source:
-        pytest.skip("set VIETNAMESE_LEARNING_HTML to run the real 9.4 MB fixture")
-    html = Path(source).read_bytes()
-    decoded = html.decode("utf-8")
-    keys = re.findall(r'data-audio-key=["\x27]([^"\x27]+)', decoded)
-    kinds = re.findall(r'data-audio-kind=["\x27]([^"\x27]+)', decoded)
+def test_large_generated_page_full_deployment(client):
+    keys = [f"asset-{index}" for index in range(6895)]
+    kinds = ["audio"] * len(keys)
+    html = b"<!doctype html><title>Generated transport fixture</title>" + b" " * 9_400_000
     audio_manifest = json.dumps(
         {
             "version": 1,
@@ -453,27 +447,27 @@ def test_real_vietnamese_page_full_deployment(client):
     }
 
     assert len(keys) == 6_895
-    assert len(html) == 9_427_088
-    client.post("/api/sites", json={"slug": "vietnamese-real", "title": "Vietnamese Real"})
-    deployment = client.post("/api/sites/vietnamese-real/deployments", json=manifest).json()
+    assert len(html) > 9_400_000
+    client.post("/api/sites", json={"slug": "generated-large", "title": "Vietnamese Real"})
+    deployment = client.post("/api/sites/generated-large/deployments", json=manifest).json()
     assert len(deployment["missing_blobs"]) == 2
     for _path, content, _content_type in assets:
         digest = hashlib.sha256(content).hexdigest()
         response = client.put(
-            f"/api/sites/vietnamese-real/deployments/{deployment['id']}/blobs/{digest}",
+            f"/api/sites/generated-large/deployments/{deployment['id']}/blobs/{digest}",
             content=content,
         )
         assert response.status_code == 200
-    upload_source(client, "vietnamese-real", deployment["id"], source)
+    upload_source(client, "generated-large", deployment["id"], source)
     assert client.post(
-        f"/api/sites/vietnamese-real/deployments/{deployment['id']}/finalize"
+        f"/api/sites/generated-large/deployments/{deployment['id']}/finalize"
     ).json()["state"] == "ready"
     assert client.post(
-        f"/api/sites/vietnamese-real/deployments/{deployment['id']}/activate"
+        f"/api/sites/generated-large/deployments/{deployment['id']}/activate"
     ).json()["state"] == "active"
-    assert client.get("/sites/vietnamese-real/").content == html
+    assert client.get("/sites/generated-large/").content == html
     ranged = client.get(
-        "/sites/vietnamese-real/audio-manifest.json", headers={"Range": "bytes=0-127"}
+        "/sites/generated-large/audio-manifest.json", headers={"Range": "bytes=0-127"}
     )
     assert ranged.status_code == 206
     assert ranged.content == audio_manifest[:128]

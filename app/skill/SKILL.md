@@ -10,6 +10,22 @@ development-source snapshot as well as its public static output. The CLI hashes 
 files, uploads only missing blobs, finalizes the immutable deployment, and atomically
 activates it.
 
+## Platform / site boundary
+
+The hosted private source snapshot is the authoritative repository for each site.
+For site work, use this skill to pull into a new directory outside the container
+platform's Git working tree, read that site's AGENTS.md, edit and test there, then
+publish source and static output and pull again to verify recovery. Site requests
+must not become commits to the container Git repository, even if the current task
+is opened in that repository. Route them to an external workspace automatically.
+
+Keep site tests, build instructions and AGENTS.md in the private source snapshot;
+use a separate publish directory for browser assets. Do not export live Runtime Data
+into source seeds. Do not deploy sites by editing server blobs/database or rebuilding
+the platform container. Platform changes are separate Git changes and releases.
+For mixed requests, separate platform and site work; if a site copy is found inside
+the platform tree, preserve differences and migrate via pull/deploy before removing it.
+
 ## Initialize
 
 Before any deployment, run:

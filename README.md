@@ -99,11 +99,19 @@ docker compose --env-file .env up -d --build
 
 Docker 将宿主机 `./data` 挂载到容器的 `app/data`，因此数据库和 blob 会持久化。
 
-## 示例站点
+## 平台与站点边界
 
-- [`examples/training-log`](examples/training-log/)：移动端优先的训练日志微站点。演示 Runtime
-  Data 初始化、跨设备保存、revision 冲突保护，以及固定月份的公网只读分享链接。原单文件
-  HTML 的内嵌训练数据通过 seed 完整迁移，后续 deployment 不会覆盖线上数据。
+此 Git 仓库只管理容器平台。真实站点的完整开发源码、测试和站点 AGENTS.md 由线上
+Microsite Container 的私有源码快照管理，本地目录只是开发工作副本。
+
+站点迭代使用 microsite-container skill：先 `pull --slug <slug> --out <仓库外的新目录>`，
+在该目录开发和验证，再以该目录为 `--source-dir`、静态产物目录为 `--publish-dir` 发布。
+发布包含源码快照、校验和激活；重新 pull 验证恢复能力。站点发布不需要平台 git pull 或重建容器。
+平台升级只提交平台改动；不得把线上站点源码、种子数据、业务测试放入本仓库。
+详细红线与拦截流程见 [AGENTS.md](AGENTS.md)。
+
+开发环境运行 `git config core.hooksPath .githooks` 启用提交拦截；CI 同样执行
+`python scripts/check_boundaries.py`。历史混合提交保留，当前版本不再跟踪站点副本。
 
 ## Manifest 部署协议
 
@@ -432,21 +440,11 @@ FastAPI 仍负责 deployment/path 到 hash 的解析、权限边界和响应头�
 | `MICROSITE_ACCEL_PREFIX` | 空 | Nginx internal location；空表示 FastAPI 直出 |
 | `MICROSITE_CORS_ORIGIN` | `*` | 公共静态资源 CORS 来源 |
 
-## 越南语学习页验证
+## 平台验证
 
-真实验证对象为：
-`https://html.orcacalf.site/view/53cd5401`。
-
-当前样本大小 9,427,088 字节，包含 6,895 个音频占位。测试不把大型源文件提交到仓库；
-下载到临时目录后执行：
-
-```bash
-VIETNAMESE_LEARNING_HTML=/path/to/vietnamese-learning.html pytest -q
-```
-
-`tests/test_vietnamese_fixture.py` 会验证真实页面规模和音频槽位，并生成外部
-`audio-manifest.json` 测试站点；核心集成测试还会验证 manifest 上传、哈希复用、原子
-激活、SPA fallback 与音频 Range 请求。
+`pytest -q` 使用合成数据验证源码恢复、manifest 上传、哈希复用、原子激活、
+Runtime Data 权限和通用分享范围。大文件用例在测试内生成约 9.4 MB 的 HTML 和资源清单，
+不依赖任何真实站点、个人数据或外部页面下载。SDK 回归运行 `node --test tests/js/*.test.cjs`。
 
 ## 兼容的旧接口
 
@@ -463,7 +461,11 @@ MIT
 
 站点页面、静态资源和历史部署 URL 默认要求有效登录会话；浏览器导航未登录时跳转登录页，登录后返回原 URL。管理员可在站点菜单的“权限”中显式选择公开、密码访问、全部登录用户、指定用户或仅自己。Runtime Data 的 `read: public` 表示可按站点查看权限读取，`read: owner` 仍仅允许所有者；写入与私有源码继续校验所有者权限。
 
-训练日志按月份分享：所有者登录后调用 `POST /api/sites/{slug}/share-links`，JSON 为 `{"document":"training-plan","month":"2026-09"}`，获取 `/share/{随机凭证}/?view=share&month=2026-09` 链接。分享只允许读取对应站点的入口页、`assets/` 资源及对应月份的文档记录；完整 seed、其他月份、其他站点和写入操作不会获得授权。此接口目前支持以 ISO 日期为键的文档。
+通用只读分享：所有者调用 `POST /api/sites/{slug}/share-links`，传入
+`{"document":"settings","scope":{"type":"document"}}` 分享完整文档，或
+`{"document":"settings","scope":{"type":"key-prefix","prefix":"public/"}}` 分享对象中指定前缀的键。
+范围由服务端保存并校验，不能通过修改 URL 扩大；后续不匹配对象结构的文档拒绝前缀分享读取。
+旧 `month` 请求和已签发链接保留兼容，但新站点不必使用日期格式。站点 UI 和业务范围的选择由站点负责。
 
 旧的 `?view=share` 参数不能授权匿名访问，须重新生成分享链接。分享链接持有者均可读取已授权内容。通用站点若需要分享，应接入服务端授权流程；不要单凭前端参数放行。
 

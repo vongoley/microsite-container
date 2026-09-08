@@ -607,6 +607,9 @@ async def lifespan(app: FastAPI):
             token_hash TEXT PRIMARY KEY, site_id TEXT NOT NULL, document_key TEXT NOT NULL,
             month TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
         )""")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(site_share_links)")}
+        if "scope_json" not in columns:
+            db.execute("ALTER TABLE site_share_links ADD COLUMN scope_json TEXT")
     yield
 
 
@@ -647,8 +650,8 @@ async def renew_browser_session(request: Request, call_next):
         asset = share_match[2]
         if asset not in ("", "index.html") and not asset.startswith("assets/"):
             return JSONResponse({"detail": "Asset not shared"}, status_code=404)
-        if not asset and (request.query_params.get("view") != "share" or request.query_params.get("month") != share["month"] or not original_path.endswith("/")):
-            return RedirectResponse(f"/share/{share_token}/?view=share&month={share['month']}", status_code=303, headers={"Cache-Control": "no-store"})
+        if not asset and (request.query_params.get("view") != "share" or (share["month"] and request.query_params.get("month") != share["month"]) or not original_path.endswith("/")):
+            return RedirectResponse(f"/share/{share_token}/?view=share" + (f"&month={share['month']}" if share["month"] else ""), status_code=303, headers={"Cache-Control": "no-store"})
         request.scope["path"] = f"/sites/{share['slug']}/{asset}"
         request.scope["raw_path"] = request.scope["path"].encode()
         request.state.site_share = dict(share)
@@ -929,10 +932,23 @@ async def create_site_share(site_slug: str, request: Request, db: sqlite3.Connec
     if user["role"] != "super_admin" and user["id"] != site["owner_id"]:
         raise HTTPException(403, "Only the site owner can create share links")
     body = await request.json()
+    # Legacy date/month requests remain supported; new scopes are business-neutral.
     month = body.get("month", "")
     document_key = body.get("document", "")
-    if not isinstance(month, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month):
-        raise HTTPException(422, "A valid month is required")
+    scope = body.get("scope")
+    if scope is not None and "month" in body:
+        raise HTTPException(422, "Use scope or legacy month, not both")
+    if scope is None:
+        if not isinstance(month, str) or not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", month):
+            raise HTTPException(422, "A valid month or explicit scope is required")
+    elif not isinstance(scope, dict) or scope.get("type") not in ("document", "key-prefix"):
+        raise HTTPException(422, "Invalid share scope")
+    elif scope["type"] == "document":
+        if set(scope) != {"type"}:
+            raise HTTPException(422, "Invalid document scope")
+    elif (set(scope) != {"type", "prefix"} or not isinstance(scope["prefix"], str)
+          or not 1 <= len(scope["prefix"]) <= 200):
+        raise HTTPException(422, "A non-empty key prefix is required")
     if not isinstance(document_key, str):
         raise HTTPException(422, "Invalid document")
     config = db.execute("SELECT * FROM site_document_configs WHERE site_id=? AND document_key=? AND active_deployment_id=?",
@@ -941,13 +957,15 @@ async def create_site_share(site_slug: str, request: Request, db: sqlite3.Connec
         raise HTTPException(403, "Document is not shareable")
     document = db.execute("SELECT value_json FROM site_documents WHERE site_id=? AND document_key=?", (site["id"], document_key)).fetchone()
     value = json.loads(document["value_json"]) if document else None
-    if not isinstance(value, dict) or any(not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", key) for key in value):
+    if scope is None and (not isinstance(value, dict) or any(not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", key) for key in value)):
         raise HTTPException(422, "Monthly sharing requires a date-keyed document")
+    if scope and scope["type"] == "key-prefix" and not isinstance(value, dict):
+        raise HTTPException(422, "Key-prefix scope requires an object document")
     share_token = secrets.token_urlsafe(32)
-    db.execute("INSERT INTO site_share_links VALUES (?, ?, ?, ?, ?, ?)",
-               (hashlib.sha256(share_token.encode()).hexdigest(), site["id"], document_key, month, user["id"], datetime.now(TZ_BEIJING).isoformat()))
+    db.execute("INSERT INTO site_share_links (token_hash, site_id, document_key, month, created_by, created_at, scope_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+               (hashlib.sha256(share_token.encode()).hexdigest(), site["id"], document_key, month, user["id"], datetime.now(TZ_BEIJING).isoformat(), json.dumps(scope) if scope else None))
     db.commit()
-    return JSONResponse({"url": f"/share/{share_token}/?view=share&month={month}"}, status_code=201, headers={"Cache-Control": "no-store"})
+    return JSONResponse({"url": f"/share/{share_token}/?view=share" + (f"&month={month}" if month else "")}, status_code=201, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/session")

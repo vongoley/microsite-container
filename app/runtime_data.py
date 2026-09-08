@@ -595,8 +595,11 @@ def create_runtime_router(
         if share:
             if config["read_policy"] != "public":
                 raise HTTPException(403, "Document is not shareable")
-            prefix = share["month"] + "-"
-            payload["value"] = {key: value for key, value in (payload["value"] or {}).items() if key.startswith(prefix)}
+            scope = json.loads(share["scope_json"]) if share.get("scope_json") else {"type": "key-prefix", "prefix": share["month"] + "-"}
+            if scope["type"] == "key-prefix":
+                if not isinstance(payload["value"], dict):
+                    raise HTTPException(403, "Shared document no longer matches its scope")
+                payload["value"] = {key: value for key, value in payload["value"].items() if key.startswith(scope["prefix"])}
         return JSONResponse(
             payload,
             headers={"ETag": _etag(revision), "Cache-Control": "no-store"},

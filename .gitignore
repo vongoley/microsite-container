@@ -6,3 +6,8 @@ __pycache__/
 .venv/
 .pytest_cache/
 .claude/
+
+# Live sites are managed by the container source API, never platform Git.
+/sites/
+/examples/
+**/.microsite-origin.json
