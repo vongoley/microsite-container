@@ -136,6 +136,7 @@
       ...(exercise ? { exercise } : {}),
         ...(note ? { note } : {}),
       ...(weight === undefined ? {} : { weight }),
+      ...(["kg", "lbs"].includes(source.weightUnit) ? { weightUnit: source.weightUnit } : {}),
       ...(sets === undefined ? {} : { sets }),
       ...(reps === undefined ? {} : { reps }),
     };
@@ -460,7 +461,7 @@
     const separator = (symbol) => `<span class="locked-separator" aria-hidden="true">${symbol}</span>`;
     const summary = item.id === "cardio"
       ? `${metric(detail.averageHeartRate, 'bpm')}${separator('·')}${metric(detail.durationMinutes, '分钟')}`
-      : `${metric(detail.weight, 'kg')}${separator('·')}${metric(detail.sets, '组')}${separator('×')}${metric(detail.reps, '次')}`;
+      : `${metric(detail.weight, detail.weightUnit === 'lbs' ? 'Lbs' : 'Kg')}${separator('·')}${metric(detail.sets, '组')}${separator('×')}${metric(detail.reps, '次')}`;
     return `
       <span class="locked-exercise" title="${escapeAttribute(detail.exercise || "")}">${display(detail.exercise)}</span>
       <span class="locked-summary">${summary}</span>
@@ -512,11 +513,10 @@
             </label>
           `
           : `${renderExerciseCombobox(item, detail, rowIndex, optionValues)}
-            <label class="detail-field detail-field-number">
-              <span class="visually-hidden">${item.label}第${rowIndex + 1}项重量（kg）</span>
-              <input type="number" inputmode="decimal" min="0" max="5000" step="0.01" aria-label="${item.label}第${rowIndex + 1}项重量（kg）" data-training="${item.id}" data-row="${rowIndex}" data-field="weight" value="${escapeAttribute(detail.weight)}" placeholder="60">
-              <span class="detail-input-unit" aria-hidden="true">kg</span>
-            </label>
+            <div class="detail-field detail-field-number detail-field-weight">
+              <input type="number" inputmode="decimal" min="0" max="5000" step="0.01" aria-label="${item.label}第${rowIndex + 1}项重量（${detail.weightUnit === "lbs" ? "Lbs" : "Kg"}）" data-training="${item.id}" data-row="${rowIndex}" data-field="weight" value="${escapeAttribute(detail.weight)}" placeholder="60">
+              <button class="detail-input-unit weight-unit-button" type="button" data-weight-unit data-training="${item.id}" data-row="${rowIndex}" aria-label="重量单位 ${detail.weightUnit === "lbs" ? "Lbs，切换为 Kg" : "Kg，切换为 Lbs"}">${detail.weightUnit === "lbs" ? "Lbs" : "Kg"}</button>
+            </div>
             <label class="detail-field detail-field-number">
               <span class="visually-hidden">${item.label}第${rowIndex + 1}项组数</span>
               <input type="number" inputmode="numeric" min="1" max="100" step="1" aria-label="${item.label}第${rowIndex + 1}项组数" data-training="${item.id}" data-row="${rowIndex}" data-field="sets" value="${escapeAttribute(detail.sets)}" placeholder="4">
@@ -928,6 +928,19 @@
   });
 
 
+  elements.details.addEventListener("click", event => {
+    const button = event.target.closest("[data-weight-unit]");
+    if (!button || draftLocked || saveInProgress) return;
+    const { training, row } = button.dataset;
+    const detail = draftDetails[training][Number(row)];
+    detail.weightUnit = detail.weightUnit === "lbs" ? "kg" : "lbs";
+    const unit = detail.weightUnit === "lbs" ? "Lbs" : "Kg";
+    button.textContent = unit;
+    button.setAttribute("aria-label", `重量单位 ${unit}，切换为 ${unit === "Lbs" ? "Kg" : "Lbs"}`);
+    const input = button.parentElement.querySelector("input");
+    input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/（.*）$/, `（${unit}）`));
+  });
+
   function closeNoteEditors(except = null) {
     elements.details.querySelectorAll(".note-control").forEach(control => {
       if (control === except) return;
@@ -972,7 +985,8 @@
       control.querySelector(".note-button").focus();
     }
   }, true);
-  window.addEventListener("resize", () => closeNoteEditors());
+  // Keyboard opening changes viewport height; it must not dismiss the focused editor.
+  window.matchMedia("(min-width: 768px)").addEventListener("change", () => closeNoteEditors());
 
   function moveDetail(training, from, to) {
     const rows = draftDetails[training];

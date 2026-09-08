@@ -49,3 +49,11 @@ python3 ~/.codex/skills/microsite-container/scripts/deploy.py deploy \
   可启动本地验收。本地模式仅将编辑保存到浏览器，不写入线上数据。
 
 部署当前版本请将上述命令中的 `examples/training-log` 替换为 `sites/training-log`。空 seed 仅初始化不存在的文档，不覆盖服务器已有训练数据。
+
+## 2026-09-08 编辑修复
+
+- 已拉取并核对线上源快照 `dep_6d3ce7754a794a42a8f2963862e09ce1`；保留仓库中后续登录与分享修复。
+- 移动端备注仅在切换桌面布局时关闭，不再因键盘引起的窗口高度变化关闭。
+- 点击每行重量后的 Kg / Lbs 可切换录入单位，数字不换算；旧记录默认为 Kg。单位随记录保存，锁定后显示。
+- Runtime Data Schema 升级至 7，部署时需同步发布 schema 和 microsite.json。
+- 浏览器回归：启动上述本地服务，安装 Playwright 后运行 `node --test tests/js/training-log.test.cjs`（默认使用 Edge，可通过 PLAYWRIGHT_CHANNEL 指定浏览器）。覆盖移动高度变化、备注持久化、单位切换与锁定、桌面展示。

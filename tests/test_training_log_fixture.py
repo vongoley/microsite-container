@@ -150,3 +150,16 @@ def test_training_log_keeps_original_typography_and_training_palette():
     assert "background: color-mix(in srgb, var(--muted) 16%, transparent)" in styles
     assert 'id="clearDay"' not in html
     assert "elements.clear" not in script
+
+
+def test_current_training_log_weight_units_are_optional_and_validated():
+    schema = json.loads((ROOT / 'sites/training-log/schemas/training-plan.schema.json').read_text(encoding='utf-8'))
+    validator = Draft202012Validator(schema)
+    Draft202012Validator.check_schema(schema)
+    for unit in (None, 'kg', 'lbs'):
+        detail = {'weight': 60.25, 'note': '备注'}
+        if unit is not None:
+            detail['weightUnit'] = unit
+        validator.validate({'2026-09-08': {'ids': ['legs'], 'details': {'legs': [detail]}}})
+    invalid = {'2026-09-08': {'ids': ['legs'], 'details': {'legs': [{'weightUnit': 'stone'}]}}}
+    assert list(validator.iter_errors(invalid))

@@ -45,6 +45,13 @@
         "note": {
           "type": "string",
           "maxLength": 500
+        },
+        "weightUnit": {
+          "type": "string",
+          "enum": [
+            "kg",
+            "lbs"
+          ]
         }
       },
       "additionalProperties": false

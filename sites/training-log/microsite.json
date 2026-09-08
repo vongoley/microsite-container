@@ -5,7 +5,7 @@
         "scope": "site",
         "read": "public",
         "write": "owner",
-        "schemaVersion": 6,
+        "schemaVersion": 7,
         "schema": "schemas/training-plan.schema.json",
         "seed": "training-plan.seed.json",
         "maxBytes": 1048576
