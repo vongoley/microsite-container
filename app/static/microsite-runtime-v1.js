@@ -53,7 +53,6 @@
   async function readResponse(response) {
     const payload = await response.json().catch(() => null);
     if (response.ok) return payload;
-    if (response.status === 401) redirectToLogin();
     const detail = payload?.detail;
     const message = detailMessage(detail, `Runtime data request failed (${response.status})`);
     if (response.status === 409) {
@@ -172,8 +171,10 @@
     const response = await originalFetch(...args);
     const url = new URL(typeof args[0] === "string" ? args[0] : args[0]?.url || args[0], window.location.href);
     if (response.status === 401 && url.origin === window.location.origin) {
-      // Let the caller persist the submitted draft before navigation.
-      window.setTimeout(redirectToLogin, 0);
+      // A single 401 may come from omitted credentials or an endpoint-specific
+      // token failure. Only redirect when the browser session check requires it.
+      // Defer the check so callers can first preserve their submitted draft.
+      window.setTimeout(checkBrowserSession, 0);
     }
     return response;
   };
