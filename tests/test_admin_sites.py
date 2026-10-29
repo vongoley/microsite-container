@@ -549,3 +549,106 @@ def test_existing_share_table_migrates_without_revoking_legacy_links(admin_clien
         assert migrated.get(url).status_code == 200
         result = migrated.get("/api/runtime/sites/export-site/documents/settings", headers={"X-Microsite-Share": url.split("/")[2]})
         assert result.json()["value"] == {"2026-09-01": "visible"}
+
+
+def test_recycle_restore_preserves_data_and_revokes_access(admin_client):
+    client, db_path, token, owner_id = admin_client
+    site, deployment = deploy_runtime_site(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+    base = "/api/sites/export-site"
+    runtime = "/api/runtime/sites/export-site/documents/settings"
+    writer = client.post(runtime + "/writer-tokens", headers=headers, json={}).json()
+    share = client.post(base + "/share-links", json={
+        "document": "settings", "scope": {"type": "document"}
+    }).json()["url"]
+    before = client.get(runtime).json()
+    source = client.get(base + "/source", headers=headers).content
+    blobs = {path: path.read_bytes() for path in microsites.BLOBS_DIR.rglob("*") if path.is_file()}
+    confirmation = {"confirm_slug": "export-site"}
+    assert client.request("DELETE", base, headers=headers, json=confirmation).status_code == 200
+    assert client.request("DELETE", base, headers=headers, json=confirmation).status_code == 200
+    assert client.get("/api/sites", headers=headers).json() == []
+    recycled = client.get("/api/sites?deleted=true", headers=headers).json()
+    assert recycled[0]["id"] == site["id"] and recycled[0]["deleted_at"]
+    admin = client.get("/admin").text
+    assert 'data-action="restore"' in admin
+    assert 'data-action="delete"' not in admin
+    for url in (site["url"], f"/_deployments/{deployment['id']}/", share, runtime,
+                base, base + "/source", f"/admin/sites/{site['id']}/history",
+                f"/admin/sites/{site['id']}/download", f"/admin/sites/{site['id']}/permissions"):
+        assert client.get(url, headers=headers).status_code == 404, url
+    for action in ("activate", "finalize"):
+        assert client.post(base + f"/deployments/{deployment['id']}/{action}", headers=headers).status_code == 404
+    assert client.put(runtime, headers={**headers, "If-Match": '"rev-1"'},
+                      json={"value": {"changed": True}}).status_code == 404
+    assert client.post(runtime + "/writer-tokens", headers=headers, json={}).status_code == 404
+    assert client.post(base + "/share-links", json={"document": "settings", "scope": {"type": "document"}}).status_code == 404
+    assert client.post("/api/sites", headers=headers, json={"slug": "export-site", "title": "Reuse"}).status_code == 409
+    assert client.post(base + "/restore", headers=headers, json=confirmation).status_code == 200
+    assert client.post(base + "/restore", headers=headers, json=confirmation).status_code == 200
+    assert client.get(site["url"]).status_code == 200
+    assert client.get(f"/_deployments/{deployment['id']}/").status_code == 200
+    assert client.get(runtime).json() == before
+    assert client.get(base + "/source", headers=headers).content == source
+    assert all(path.read_bytes() == content for path, content in blobs.items())
+    assert client.get(share).status_code == 404
+    client.cookies.clear()
+    assert client.put(runtime, headers={"Authorization": f"Bearer {writer['token']}", "If-Match": '"rev-1"'},
+                      json={"value": {"changed": True}}).status_code == 401
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT revoked_at FROM runtime_writer_tokens WHERE id=?", (writer["id"],)).fetchone()[0]
+        assert db.execute("SELECT deleted_at, deleted_by FROM sites WHERE id=?", (site["id"],)).fetchone() == (None, None)
+
+
+def test_recycle_requires_confirmation_csrf_and_ownership(admin_client):
+    client, db_path, token, owner_id = admin_client
+    site, _ = deploy_runtime_site(client, token)
+    url = f"/admin/sites/{site['id']}/delete"
+    confirmation = {"confirm_slug": "export-site"}
+    for origin in (None, "https://attacker.example"):
+        assert client.post(url, json=confirmation, headers={"Origin": origin} if origin else {}).status_code == 403
+    assert client.post(url, json={"confirm_slug": "wrong"}, headers={"Origin": "http://testserver"}).status_code == 422
+    with sqlite3.connect(db_path) as db:
+        db.execute("INSERT INTO users (id, username, password_hash, role, created_at, is_active) VALUES ('other', 'other', '', 'admin', 'now', 1)")
+        db.execute("INSERT INTO user_tokens (id, user_id, token, name, created_at, is_active) VALUES ('other-token', 'other', 'other-token', 'test', 'now', 1)")
+    client.cookies.set(main.SESSION_COOKIE, main.make_session_token("other", "other"))
+    assert client.post(url, json=confirmation, headers={"Origin": "http://testserver"}).status_code == 403
+    assert client.request("DELETE", "/api/sites/export-site", json=confirmation,
+                          headers={"Authorization": "Bearer other-token"}).status_code == 403
+    client.cookies.set(main.SESSION_COOKIE, main.make_session_token(owner_id, "admin"))
+    assert client.post(url, json=confirmation, headers={"Origin": "http://testserver"}).status_code == 200
+    assert client.post(f"/admin/sites/{site['id']}/restore", json=confirmation,
+                       headers={"Origin": "http://testserver"}).status_code == 200
+
+
+def test_activation_rechecks_deletion_after_obtaining_write_lock(admin_client, monkeypatch):
+    client, db_path, token, owner_id = admin_client
+    site, deployment = deploy_runtime_site(client, token)
+    original = microsites.load_runtime_config
+
+    def delete_during_validation(db, deployment_id):
+        configs = original(db, deployment_id)
+        with sqlite3.connect(db_path) as other:
+            other.row_factory = sqlite3.Row
+            microsites.change_site_lifecycle(other, site["slug"], owner_id, site["slug"])
+        return configs
+
+    monkeypatch.setattr(microsites, "load_runtime_config", delete_during_validation)
+    response = client.post(f"/api/sites/export-site/deployments/{deployment['id']}/activate",
+                           headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 404
+    assert client.get(site["url"]).status_code == 404
+
+
+def test_recycle_rolls_back_when_revocation_fails(admin_client):
+    client, db_path, token, owner_id = admin_client
+    site, _ = deploy_runtime_site(client, token)
+    with sqlite3.connect(db_path) as db:
+        db.row_factory = sqlite3.Row
+        db.execute("CREATE TRIGGER fail_revoke BEFORE UPDATE ON runtime_writer_tokens BEGIN SELECT RAISE(ABORT, 'test failure'); END")
+        db.execute("INSERT INTO runtime_writer_tokens (id,user_id,site_id,document_key,token_hash,token_prefix,name,created_at) VALUES ('writer',?,?,'settings','hash','prefix','test','now')", (owner_id, site["id"]))
+        db.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            microsites.change_site_lifecycle(db, site["slug"], owner_id, site["slug"])
+        assert db.execute("SELECT deleted_at FROM sites WHERE id=?", (site["id"],)).fetchone()[0] is None
+    assert client.get(site["url"]).status_code == 200

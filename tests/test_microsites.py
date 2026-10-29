@@ -471,3 +471,13 @@ def test_large_generated_page_full_deployment(client):
     )
     assert ranged.status_code == 206
     assert ranged.content == audio_manifest[:128]
+
+
+def test_empty_site_recycle_restore(client):
+    created = client.post('/api/sites', json={'slug': 'empty-recycle', 'title': 'Empty'}).json()
+    body = {'confirm_slug': 'empty-recycle'}
+    assert client.request('DELETE', '/api/sites/empty-recycle', json=body).status_code == 200
+    assert client.get('/api/sites').json() == []
+    assert client.get('/api/sites?deleted=true').json()[0]['id'] == created['id']
+    assert client.post('/api/sites/empty-recycle/restore', json=body).status_code == 200
+    assert client.get('/api/sites/empty-recycle').json()['deployments'] == []

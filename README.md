@@ -72,6 +72,28 @@ uvicorn app.main:app --reload --port 8000
 登录后的 Admin 是部署站点管理页，不提供手动文件上传入口。站点应由 Codex、部署 CLI 或
 CI 发布；页面会展示当前激活 deployment、资源规模、Runtime Document 数量和最近部署时间。
 
+### 站点回收站
+
+站点所有者和超级管理员可从更多操作菜单选择“移入回收站”，输入完整 slug 确认。
+回收站位于管理页底部，恢复也需要输入 slug。操作原子执行，重复删除或恢复是幂等的。
+
+- 删除后，站点、所有历史部署、私有源码下载、分享链接、Runtime Data 读写及部署操作均不可用。
+- 完整源码、部署文件、运行数据和历史均保留，slug 继续占用；恢复后重新开放原站点。
+- 分享链接被删除，专用机器写入 Token 被撤销；恢复不会重新启用这些凭据。外部 cron/worker 需自行停用。
+- 当前阶段没有自动到期清理或物理删除，不释放磁盘空间。文件按哈希跨站点共享，不能直接删除 blob。
+- 已下载或已缓存的文件无法收回；历史部署曾使用长期缓存，删除只阻止后续到达服务器的请求。
+
+API 使用管理 API Token（不是 Runtime writer token）：
+
+| 操作 | 接口 | JSON 请求体 |
+| --- | --- | --- |
+| 移入回收站 | `DELETE /api/sites/{slug}` | `{"confirm_slug":"目标 slug"}` |
+| 恢复站点 | `POST /api/sites/{slug}/restore` | `{"confirm_slug":"目标 slug"}` |
+| 列出回收站 | `GET /api/sites?deleted=true` | 无 |
+
+默认 `GET /api/sites` 仅返回正常站点。后台删除/恢复仅接受同源 JSON 请求。
+现有数据库启动时自动添加 `deleted_at`、`deleted_by` 字段，无需搬迁文件。
+
 ### Admin 完整导出
 
 已激活站点可以从 Admin 下载 ZIP。导出结构如下：

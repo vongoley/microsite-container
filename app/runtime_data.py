@@ -448,7 +448,7 @@ def _runtime_site_config(
         SELECT s.id AS site_id, s.owner_id, c.*
         FROM sites s
         JOIN site_document_configs c ON c.site_id = s.id
-        WHERE s.slug = ? AND c.document_key = ?
+        WHERE s.slug = ? AND s.deleted_at IS NULL AND c.document_key = ?
           AND s.active_deployment_id = c.active_deployment_id
         """,
         (site_slug, document_key),
@@ -494,7 +494,7 @@ def _require_owner(
 
 def _site_for_actor(db: sqlite3.Connection, site_slug: str, actor_id: str) -> sqlite3.Row:
     site = db.execute("SELECT * FROM sites WHERE slug = ?", (site_slug,)).fetchone()
-    if not site:
+    if not site or site["deleted_at"]:
         raise HTTPException(404, "Site not found")
     if site["owner_id"] != actor_id:
         actor = db.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
@@ -723,6 +723,7 @@ def create_runtime_router(
             db: sqlite3.Connection = Depends(get_db),
             actor_id: str = Depends(get_api_user),
         ):
+            db.execute("BEGIN IMMEDIATE")
             site = _site_for_actor(db, site_slug, actor_id)
             config = _runtime_site_config(db, site_slug, document_key)
             name = body.name.strip() or "scheduled-writer"

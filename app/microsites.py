@@ -87,6 +87,10 @@ class SiteCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class SiteLifecycleRequest(BaseModel):
+    confirm_slug: str
+
+
 class ManifestFile(BaseModel):
     path: str
     sha256: str
@@ -188,21 +192,60 @@ def init_microsite_schema(db_path: Path) -> None:
             site_id TEXT NOT NULL, user_id TEXT NOT NULL, granted_by TEXT NOT NULL,
             PRIMARY KEY (site_id, user_id)
         )""")
+        for column in ("deleted_at", "deleted_by"):
+            if column not in site_columns:
+                con.execute(f"ALTER TABLE sites ADD COLUMN {column} TEXT")
+        con.execute("""CREATE TABLE IF NOT EXISTS site_share_links (
+            token_hash TEXT PRIMARY KEY, site_id TEXT NOT NULL, document_key TEXT NOT NULL,
+            month TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+            scope_json TEXT
+        )""")
+        share_columns = {row[1] for row in con.execute("PRAGMA table_info(site_share_links)")}
+        if "scope_json" not in share_columns:
+            con.execute("ALTER TABLE site_share_links ADD COLUMN scope_json TEXT")
         init_runtime_schema(con)
         con.commit()
     finally:
         con.close()
 
 
-def _site_for_actor(db: sqlite3.Connection, slug: str, actor_id: str) -> sqlite3.Row:
+def _site_for_actor(db: sqlite3.Connection, slug: str, actor_id: str, *, include_deleted: bool = False) -> sqlite3.Row:
     site = db.execute("SELECT * FROM sites WHERE slug = ?", (slug,)).fetchone()
-    if not site:
+    if not site or (site["deleted_at"] and not include_deleted):
         raise HTTPException(status_code=404, detail="Site not found")
     if site["owner_id"] != actor_id:
         actor = db.execute("SELECT role FROM users WHERE id = ?", (actor_id,)).fetchone()
         if not actor or actor["role"] != "super_admin":
             raise HTTPException(status_code=403, detail="Not allowed to manage this site")
     return site
+
+
+def change_site_lifecycle(db: sqlite3.Connection, slug: str, actor_id: str,
+                          confirm_slug: str, *, restore: bool = False) -> dict:
+    """Serialize deletion/restoration with deployment and Runtime Data writes.
+
+    No files or data are purged. Revoked credentials stay revoked after restore.
+    """
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        site = _site_for_actor(db, slug, actor_id, include_deleted=True)
+        if confirm_slug != site["slug"]:
+            raise HTTPException(422, "请输入完整站点 slug 确认操作")
+        if bool(site["deleted_at"]) != (not restore):
+            now = _now()
+            db.execute(
+                "UPDATE sites SET deleted_at=?, deleted_by=?, updated_at=?, access_epoch=access_epoch+1 WHERE id=?",
+                (None if restore else now, None if restore else actor_id, now, site["id"]),
+            )
+            if not restore:
+                db.execute("DELETE FROM site_share_links WHERE site_id=?", (site["id"],))
+                db.execute("UPDATE runtime_writer_tokens SET revoked_at=? WHERE site_id=? AND revoked_at IS NULL",
+                           (now, site["id"]))
+        db.commit()
+        return {"id": site["id"], "slug": slug, "deleted": not restore}
+    except Exception:
+        db.rollback()
+        raise
 
 
 def _site_url(slug: str, deployment_id: str | None = None) -> str:
@@ -372,17 +415,30 @@ def create_microsite_router(
             raise HTTPException(409, "Site slug already exists")
         return {"id": site_id, "slug": slug, "title": title, "url": _site_url(slug)}
 
+    @router.delete("/api/sites/{site_slug}")
+    async def delete_site(site_slug: str, body: SiteLifecycleRequest,
+                          db: sqlite3.Connection = Depends(get_db),
+                          owner_id: str = Depends(get_api_user)):
+        return change_site_lifecycle(db, site_slug, owner_id, body.confirm_slug)
+
+    @router.post("/api/sites/{site_slug}/restore")
+    async def restore_site(site_slug: str, body: SiteLifecycleRequest,
+                           db: sqlite3.Connection = Depends(get_db),
+                           owner_id: str = Depends(get_api_user)):
+        return change_site_lifecycle(db, site_slug, owner_id, body.confirm_slug, restore=True)
+
     @router.get("/api/sites")
     async def list_sites(
+        deleted: bool = False,
         db: sqlite3.Connection = Depends(get_db),
         owner_id: str = Depends(get_api_user),
     ):
         actor = db.execute("SELECT role FROM users WHERE id = ?", (owner_id,)).fetchone()
         if actor and actor["role"] == "super_admin":
-            rows = db.execute("SELECT * FROM sites ORDER BY updated_at DESC").fetchall()
+            rows = db.execute("SELECT * FROM sites WHERE (deleted_at IS NOT NULL) = ? ORDER BY updated_at DESC", (deleted,)).fetchall()
         else:
             rows = db.execute(
-                "SELECT * FROM sites WHERE owner_id = ? ORDER BY updated_at DESC", (owner_id,)
+                "SELECT * FROM sites WHERE owner_id = ? AND (deleted_at IS NOT NULL) = ? ORDER BY updated_at DESC", (owner_id, deleted)
             ).fetchall()
         return [
             {
@@ -392,6 +448,7 @@ def create_microsite_router(
                 "active_deployment_id": row["active_deployment_id"],
                 "url": _site_url(row["slug"]),
                 "updated_at": row["updated_at"],
+                "deleted_at": row["deleted_at"],
             }
             for row in rows
         ]
@@ -423,6 +480,7 @@ def create_microsite_router(
         db: sqlite3.Connection = Depends(get_db),
         owner_id: str = Depends(get_api_user),
     ):
+        db.execute("BEGIN IMMEDIATE")
         site = _site_for_actor(db, site_slug, owner_id)
         if not body.files:
             raise HTTPException(400, "Manifest must contain at least one file")
@@ -612,6 +670,8 @@ def create_microsite_router(
             if not hmac.compare_digest(hasher.hexdigest(), digest):
                 raise HTTPException(400, "Uploaded content does not match SHA-256")
 
+            db.execute("BEGIN IMMEDIATE")
+            _site_for_actor(db, site_slug, owner_id)
             destination = _blob_path(digest)
             destination.parent.mkdir(parents=True, exist_ok=True)
             if destination.exists():
@@ -642,6 +702,7 @@ def create_microsite_router(
         db: sqlite3.Connection = Depends(get_db),
         owner_id: str = Depends(get_api_user),
     ):
+        db.execute("BEGIN IMMEDIATE")
         site = _site_for_actor(db, site_slug, owner_id)
         deployment = db.execute(
             "SELECT * FROM deployments WHERE id = ? AND site_id = ?",
@@ -700,7 +761,7 @@ def create_microsite_router(
             raise HTTPException(409, f"Runtime data is incompatible with this deployment: {exc}") from exc
         try:
             db.execute("BEGIN IMMEDIATE")
-            site = db.execute("SELECT * FROM sites WHERE id = ?", (site["id"],)).fetchone()
+            site = _site_for_actor(db, site_slug, owner_id)
             deployment = db.execute(
                 "SELECT * FROM deployments WHERE id = ? AND site_id = ?",
                 (deployment_id, site["id"]),
@@ -907,7 +968,7 @@ def create_data_router(get_db: Callable) -> APIRouter:
             """
             SELECT d.* FROM sites s
             JOIN deployments d ON d.id = s.active_deployment_id
-            WHERE s.slug = ? AND d.state = 'active'
+            WHERE s.slug = ? AND s.deleted_at IS NULL AND d.state = 'active'
             """,
             (site_slug,),
         ).fetchone()
@@ -929,7 +990,7 @@ def create_data_router(get_db: Callable) -> APIRouter:
         db: sqlite3.Connection = Depends(get_db),
     ):
         deployment = db.execute(
-            "SELECT * FROM deployments WHERE id = ? AND state IN ('active', 'superseded')",
+            "SELECT d.* FROM deployments d JOIN sites s ON s.id=d.site_id WHERE d.id = ? AND s.deleted_at IS NULL AND d.state IN ('active', 'superseded')",
             (deployment_id,),
         ).fetchone()
         if not deployment:

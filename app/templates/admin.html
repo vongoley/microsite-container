@@ -591,6 +591,8 @@
     .actions-menu [role="menuitem"], .history-link { gap: 8px; }
     .actions-menu .lucide, .history-link .lucide { width: 16px; height: 16px; }
     .vis-badge .lucide { width: 12px; height: 12px; margin-right: 4px; }
+    #recycle-bin p, #lifecycle-slug { overflow-wrap: anywhere; }
+    #recycle-bin p { margin: 8px 0; }
     .permission-dialog { margin: auto; width: min(520px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); overflow-y: auto; }
     .permission-dialog::backdrop { background: color-mix(in srgb, var(--black) 40%, transparent); }
     .permission-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
@@ -601,7 +603,7 @@
     .permission-option:has(input:checked) { background: var(--accent-soft); }
     .permission-option small { display: block; margin-top: 4px; color: var(--muted); }
     .permission-dialog input[type="radio"], .permission-dialog input[type="checkbox"] { accent-color: var(--accent); width: 18px; height: 18px; flex-shrink: 0; }
-    .permission-dialog input[type="password"], .permission-dialog input[type="search"] { width: 100%; min-height: 44px; margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+    .permission-dialog input[type="text"], .permission-dialog input[type="password"], .permission-dialog input[type="search"] { width: 100%; min-height: 44px; margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
     .permission-hint { font-size: .8rem; color: var(--muted); line-height: 1.5; margin: 12px 0; }
     #permission-users { max-height: 180px; overflow: auto; }
     #permission-users label { display: flex; align-items: center; gap: 10px; min-height: 44px; }
@@ -635,6 +637,7 @@
       <button role="menuitem" type="button" class="download-site" data-url="/admin/sites/{{ site.id }}/download" data-size="{{ site.export_size_bytes }}" data-title="{{ site.title }}" {% if not site.active_deployment_id %}disabled{% endif %}>{{ icon("download") }}下载 ZIP</button>
       <button role="menuitem" type="button" class="view-permissions" data-url="/admin/sites/{{ site.id }}/permissions" data-title="{{ site.title }}">{{ icon("shield") }}权限</button>
       <button role="menuitem" type="button" class="view-history" data-url="/admin/sites/{{ site.id }}/history" data-title="{{ site.title }}">{{ icon("history") }}查看历史版本</button>
+      <button role="menuitem" type="button" class="site-lifecycle" data-url="/admin/sites/{{ site.id }}/delete" data-slug="{{ site.slug }}" data-action="delete" data-deployments="{{ site.deployment_count }}" data-documents="{{ site.runtime_document_count }}">移入回收站</button>
     </div>
   </div>
   {% endmacro %}
@@ -757,7 +760,32 @@
     {% else %}
     <div class="empty">暂无已部署站点。请使用 Codex、部署脚本或 CI 发布站点后刷新本页。</div>
     {% endif %}
+    <details class="search-card" id="recycle-bin" {% if deleted_sites %}open{% endif %}>
+      <summary style="min-height:44px;cursor:pointer">回收站（{{ deleted_sites|length }}）</summary>
+      <p>站点、源码和运行数据会保留，可随时恢复。当前版本不会自动彻底清理，也不会释放磁盘空间。</p>
+      {% for site in deleted_sites %}
+      <article class="history-item">
+        <p>{{ site.title }} · {{ site.slug }}</p>
+        <p class="history-detail">删除时间：{{ site.deleted_at }}</p>
+        <button type="button" class="history-retry site-lifecycle" data-url="/admin/sites/{{ site.id }}/restore" data-slug="{{ site.slug }}" data-action="restore">恢复站点</button>
+      </article>
+      {% else %}<p>回收站为空。</p>{% endfor %}
+    </details>
   </main>
+  <dialog class="permission-dialog" id="lifecycle-dialog" aria-labelledby="lifecycle-title">
+    <form id="lifecycle-form">
+      <h2 id="lifecycle-title"></h2>
+      <p id="lifecycle-description"></p>
+      <p>请输入完整站点 slug：<strong id="lifecycle-slug"></strong></p>
+      <label for="lifecycle-confirm">确认站点 slug</label>
+      <input type="text" id="lifecycle-confirm" required autocomplete="off" spellcheck="false">
+      <p id="lifecycle-error" role="alert"></p>
+      <div class="permission-actions">
+        <button type="button" class="history-retry" id="lifecycle-cancel">取消</button>
+        <button type="submit" class="history-retry" id="lifecycle-submit" disabled>确认</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog class="permission-dialog" id="permission-dialog" aria-labelledby="permission-title">
     <form id="permission-form">
@@ -800,6 +828,57 @@
   </div>
 
   <script>
+    const lifecycleDialog = document.getElementById("lifecycle-dialog");
+    const lifecycleForm = document.getElementById("lifecycle-form");
+    const lifecycleInput = document.getElementById("lifecycle-confirm");
+    const lifecycleSubmit = document.getElementById("lifecycle-submit");
+    let lifecycleTarget = null;
+    let lifecycleBusy = false;
+    document.querySelectorAll(".site-lifecycle").forEach(button => button.addEventListener("click", () => {
+      lifecycleTarget = button;
+      closeMenu(true);
+      const restore = button.dataset.action === "restore";
+      document.getElementById("lifecycle-title").textContent = restore ? "恢复站点" : "移入回收站";
+      document.getElementById("lifecycle-description").textContent = restore
+        ? "恢复后站点和数据重新可用。旧分享链接和机器写入 Token 不会恢复，需要重新创建。"
+        : `将停用此站点及其 ${button.dataset.deployments} 个部署版本、${button.dataset.documents} 个数据文档的访问和写入，并撤销分享链接及机器写入 Token。源码和数据保留。请另行停用外部定时任务。`;
+      document.getElementById("lifecycle-slug").textContent = button.dataset.slug;
+      document.getElementById("lifecycle-error").textContent = "";
+      lifecycleInput.value = "";
+      lifecycleSubmit.disabled = true;
+      lifecycleDialog.showModal();
+      lifecycleInput.focus();
+    }));
+    lifecycleInput.addEventListener("input", () => {
+      lifecycleSubmit.disabled = lifecycleBusy || lifecycleInput.value !== lifecycleTarget?.dataset.slug;
+    });
+    document.getElementById("lifecycle-cancel").addEventListener("click", () => lifecycleDialog.close());
+    lifecycleDialog.addEventListener("cancel", event => { if (lifecycleBusy) event.preventDefault(); });
+    lifecycleDialog.addEventListener("close", () => lifecycleTarget?.focus());
+    lifecycleForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (lifecycleBusy || lifecycleInput.value !== lifecycleTarget.dataset.slug) return;
+      lifecycleBusy = true;
+      lifecycleSubmit.disabled = true;
+      document.getElementById("lifecycle-cancel").disabled = true;
+      try {
+        const response = await fetch(lifecycleTarget.dataset.url, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({confirm_slug: lifecycleInput.value})
+        });
+        if (!response.ok) {
+          const payload = await response.json();
+          throw new Error(typeof payload.detail === "string" ? payload.detail : "操作失败，请重试");
+        }
+        location.reload();
+      } catch (error) {
+        document.getElementById("lifecycle-error").textContent = error.message;
+      } finally {
+        lifecycleBusy = false;
+        lifecycleSubmit.disabled = lifecycleInput.value !== lifecycleTarget.dataset.slug;
+        document.getElementById("lifecycle-cancel").disabled = false;
+      }
+    });
     const THEME_KEY = "microsite-admin-theme";
     const LARGE_EXPORT_BYTES = {{ large_export_bytes }};
     const themeButton = document.getElementById("themeToggle");

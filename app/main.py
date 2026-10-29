@@ -602,14 +602,6 @@ headings.forEach(h => observer.observe(h));
 async def lifespan(app: FastAPI):
     init_db()
     init_microsite_schema(DB_PATH)
-    with sqlite3.connect(DB_PATH) as db:
-        db.execute("""CREATE TABLE IF NOT EXISTS site_share_links (
-            token_hash TEXT PRIMARY KEY, site_id TEXT NOT NULL, document_key TEXT NOT NULL,
-            month TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL
-        )""")
-        columns = {row[1] for row in db.execute("PRAGMA table_info(site_share_links)")}
-        if "scope_json" not in columns:
-            db.execute("ALTER TABLE site_share_links ADD COLUMN scope_json TEXT")
     yield
 
 
@@ -636,12 +628,14 @@ async def renew_browser_session(request: Request, call_next):
         elif protected_api:
             slug = original_path.split("/")[4]
             target_site = db.execute("SELECT * FROM sites WHERE slug=?", (slug,)).fetchone()
+        if target_site and target_site["deleted_at"]:
+            return JSONResponse({"detail": "Site not found"}, status_code=404, headers={"Cache-Control": "no-store"})
         allowed = site_user_can_view(db, target_site, user, request) if target_site else bool(user)
         if share_token:
             share = db.execute(
                 """SELECT l.*, s.slug FROM site_share_links l JOIN sites s ON s.id=l.site_id
                    JOIN users u ON u.id=l.created_by AND u.is_active=1
-                   WHERE l.token_hash=?""",
+                   WHERE l.token_hash=? AND s.deleted_at IS NULL""",
                 (hashlib.sha256(share_token.encode()).hexdigest(),),
             ).fetchone()
     if share_match:
@@ -868,7 +862,7 @@ def managed_site(request, db, site_id):
     if not user:
         raise HTTPException(401, "请先登录")
     site = db.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchone()
-    if not site:
+    if not site or site["deleted_at"]:
         raise HTTPException(404, "站点不存在")
     if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
         raise HTTPException(403, "仅所有者或超级管理员可管理权限")
@@ -886,8 +880,9 @@ def get_site_permissions(site_id: str, request: Request, db: sqlite3.Connection 
 
 @app.put("/admin/sites/{site_id}/permissions")
 async def update_site_permissions(site_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
-    site, user = managed_site(request, db, site_id)
     body = await request.json()
+    db.execute("BEGIN IMMEDIATE")
+    site, user = managed_site(request, db, site_id)
     visibility = body.get("visibility")
     if visibility not in VALID_VISIBILITY:
         raise HTTPException(422, "无效的权限模式")
@@ -926,12 +921,13 @@ async def create_site_share(site_slug: str, request: Request, db: sqlite3.Connec
     user = resolve_optional_user(request, db)
     if not user:
         raise HTTPException(401, "Login required")
+    body = await request.json()
+    db.execute("BEGIN IMMEDIATE")
     site = db.execute("SELECT * FROM sites WHERE slug=?", (site_slug,)).fetchone()
-    if not site:
+    if not site or site["deleted_at"]:
         raise HTTPException(404, "Site not found")
     if user["role"] != "super_admin" and user["id"] != site["owner_id"]:
         raise HTTPException(403, "Only the site owner can create share links")
-    body = await request.json()
     # Legacy date/month requests remain supported; new scopes are business-neutral.
     month = body.get("month", "")
     document_key = body.get("document", "")
@@ -980,7 +976,7 @@ def browser_session(request: Request, site: str = "", db: sqlite3.Connection = D
 @app.api_route("/site-unlock/{site_id}", methods=["GET", "POST"], response_class=HTMLResponse)
 async def unlock_site(site_id: str, request: Request, db: sqlite3.Connection = Depends(get_db)):
     site = db.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchone()
-    if not site or site["visibility"] != "password":
+    if not site or site["deleted_at"] or site["visibility"] != "password":
         raise HTTPException(404, "站点不存在或未设置密码")
     next_path = _safe_login_next(request.query_params.get("next", ""))
     if next_path == "/admin":
@@ -1059,13 +1055,16 @@ def _format_bytes(size: int) -> str:
     return f"{size} B"
 
 
-def _admin_sites(db: sqlite3.Connection, user: dict) -> list[dict]:
-    where = "" if user["role"] == "super_admin" else "WHERE s.owner_id = ?"
-    params = () if user["role"] == "super_admin" else (user["id"],)
+def _admin_sites(db: sqlite3.Connection, user: dict, *, deleted: bool = False) -> list[dict]:
+    where = "WHERE (s.deleted_at IS NOT NULL) = ?"
+    if user["role"] != "super_admin":
+        where += " AND s.owner_id = ?"
+    params = (deleted,) if user["role"] == "super_admin" else (deleted, user["id"])
     rows = db.execute(
         f"""
         SELECT s.id, s.slug, s.title, s.owner_id, s.active_deployment_id,
-               s.created_at, s.updated_at, u.username AS owner_name,
+               s.created_at, s.updated_at, s.deleted_at, u.username AS owner_name,
+               (SELECT COUNT(*) FROM deployments WHERE site_id=s.id) AS deployment_count,
                d.state AS deployment_state, d.entrypoint, d.spa_fallback,
                d.file_count, d.total_size, d.created_at AS deployment_created_at,
                d.activated_at,
@@ -1138,10 +1137,28 @@ async def admin_index(request: Request, db: sqlite3.Connection = Depends(get_db)
     return templates.TemplateResponse(request, "admin.html",
         {
             "sites": sites,
+            "deleted_sites": _admin_sites(db, user, deleted=True),
             "user": user,
             "owners": owners,
             "large_export_bytes": SITE_EXPORT_WARNING_BYTES,
         })
+
+
+@app.post("/admin/sites/{site_id}/{action}")
+async def admin_site_lifecycle(site_id: str, action: str, request: Request,
+                               body: microsites.SiteLifecycleRequest,
+                               db: sqlite3.Connection = Depends(get_db),
+                               user: dict = Depends(get_current_user)):
+    if action not in ("delete", "restore"):
+        raise HTTPException(404, "Unknown action")
+    # Require a same-origin JSON request; HTML forms cannot submit this body.
+    if request.headers.get("origin") != str(request.base_url).rstrip("/"):
+        raise HTTPException(403, "同源请求校验失败")
+    site = db.execute("SELECT slug FROM sites WHERE id=?", (site_id,)).fetchone()
+    if not site:
+        raise HTTPException(404, "站点不存在")
+    return microsites.change_site_lifecycle(
+        db, site["slug"], user["id"], body.confirm_slug, restore=action == "restore")
 
 
 @app.get("/admin/sites/{site_id}/history")
@@ -1151,7 +1168,7 @@ def admin_site_history(
     user: dict = Depends(get_current_user),
 ):
     site = db.execute("SELECT * FROM sites WHERE id = ?", (site_id,)).fetchone()
-    if not site:
+    if not site or site["deleted_at"]:
         raise HTTPException(404, "站点不存在")
     if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
         raise HTTPException(403, "无权查看此站点")
@@ -1186,7 +1203,7 @@ def download_site_archive(
         """,
         (site_id,),
     ).fetchone()
-    if not site:
+    if not site or site["deleted_at"]:
         raise HTTPException(404, "站点不存在")
     if user["role"] != "super_admin" and site["owner_id"] != user["id"]:
         raise HTTPException(403, "无权下载此站点")
